@@ -2424,6 +2424,24 @@
   document.addEventListener('visibilitychange', function(){ if (!document.hidden) checkSession(); });
   window.addEventListener('focus', checkSession);
 
+  // تجديد الجلسة مع نشاط الطالب: بتنتهي بعد ساعة من آخر استخدام (مش ساعة ثابتة من تسجيل الدخول)
+  (function(){
+    var lastBump = 0;
+    function bump(){
+      var n = Date.now();
+      if (n - lastBump < 30000) return;
+      lastBump = n;
+      if (siteContent.classList.contains('unlocked') && isSessionValid()){
+        var v = String(n);
+        safeStorageSet('ao_login_time', v);
+        setCookie('ao_login_time', v, 1/24);
+      }
+    }
+    ['click', 'touchstart', 'keydown', 'scroll'].forEach(function(ev){
+      document.addEventListener(ev, bump, {passive: true, capture: true});
+    });
+  })();
+
   loginForm.addEventListener('submit', function(e){
     e.preventDefault();
     hideLoginError();
@@ -2858,14 +2876,40 @@
       }).catch(function(err){ console.warn('تعذر تسجيل الملف بالشيت:', err); });
     } catch(err){ console.warn(err); }
   }
+  // آيفون/آيباد: خاصية download ما بتشتغل مع الملفات المؤقتة (بيفتح الملف عرض بدل ما ينزّل)،
+  // فبنستخدم نافذة المشاركة (حفظ في "الملفات") وإذا مش متاحة بنفتح الملف بتبويب جديد
+  const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  function saveBlobFile(blob, filename){
+    const url = URL.createObjectURL(blob);
+    function openTab(){
+      const w = window.open(url, '_blank');
+      if (!w) alert('الملف انحجب من المتصفح. اسمح بالنوافذ المنبثقة وجرّب مرة ثانية.');
+    }
+    if (IS_IOS){
+      try {
+        const file = new File([blob], filename, {type: blob.type || 'application/pdf'});
+        if (navigator.canShare && navigator.canShare({files: [file]})){
+          navigator.share({files: [file], title: filename}).catch(function(e){
+            if (e && e.name === 'AbortError') return;
+            openTab();
+          });
+          setTimeout(function(){ URL.revokeObjectURL(url); }, 120000);
+          return;
+        }
+      } catch(e){}
+      openTab();
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 120000);
+      return;
+    }
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+  }
   function wsDownload(id){
     id = id || wsCur; const d = wsData(id); if (!d) return;
     const blob = new Blob([wsBytes(d)], {type: 'application/pdf'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = d.file;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+    saveBlobFile(blob, d.file);
     wsLog('تحميل', d.name);
   }
   function wsView(id){
@@ -3379,22 +3423,25 @@
     function downloadPdf(d){
       var rv = d.querySelector('.qx-review');
       if (!rv || !rv.querySelector('.qx-q')) return Promise.reject(new Error('لا توجد نتيجة'));
+      // آيفون: توليد PDF بالمتصفح بيعلّق (حد ذاكرة الكانفاس)، فبنروح مباشرة لنافذة الطباعة (حفظ كـ PDF)
+      if (/iPad|iPhone|iPod/.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return Promise.reject(new Error('ios-print'));
       var doc = document.createElement('div'); doc.className = 'pdf-doc'; doc.setAttribute('dir', 'rtl');
       doc.appendChild(makeHead(d));
       var clone = rv.cloneNode(true);
       Array.prototype.slice.call(clone.children).forEach(function(c){ if (c.tagName === 'H3' || c.tagName === 'P') c.remove(); });
       doc.appendChild(clone);
       var fname = (titleOf(d) + (userName() ? ' - ' + userName() : '')).replace(/[\\\/:*?"<>|]/g, '').trim() + '.pdf';
-      return loadLib().then(function(){
+      // أمان: إذا التوليد علّق أكثر من 25 ثانية بنوقفه وبنروح لنافذة الطباعة بدل ما يضل "جاري تجهيز الملف"
+      return Promise.race([loadLib().then(function(){
         return window.html2pdf().set({
           margin: [10, 8, 10, 8],
           filename: fname,
           image: { type: 'jpeg', quality: 0.95 },
-          html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0 },
+          html2canvas: { scale: 1.5, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0 },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
           pagebreak: { mode: ['css', 'legacy'], avoid: ['.qx-q', '.pdf-head'] }
         }).from(doc).save();
-      });
+      }), new Promise(function(_, rej){ setTimeout(function(){ rej(new Error('timeout')); }, 25000); })]);
     }
 
     // ---- خطة احتياطية: نافذة الطباعة (حفظ كـ PDF) ----
