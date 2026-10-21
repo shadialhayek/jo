@@ -2917,6 +2917,20 @@
       o.appendChild(box); document.body.appendChild(o);
     }
     if (IS_IOS){
+      // Safari على iOS 13 وما فوق: تنزيل مباشر (بيطلع تأكيد "تنزيل" وبينحفظ بتطبيق الملفات).
+      // بنغيّر نوع الملف عشان ما يفتحه عرض داخل المتصفح.
+      const ua = navigator.userAgent || '';
+      const vm = ua.match(/OS (\d+)_/);
+      const iosVer = vm ? parseInt(vm[1], 10) : 99;
+      const safariLike = !/CriOS|FxiOS|EdgiOS|OPiOS|GSA\/|FBAN|FBAV|Instagram|WhatsApp|Line\//.test(ua);
+      if (safariLike && iosVer >= 13){
+        const dl = URL.createObjectURL(new Blob([blob], {type: 'application/octet-stream'}));
+        const a2 = document.createElement('a');
+        a2.href = dl; a2.download = filename; a2.style.display = 'none';
+        document.body.appendChild(a2); a2.click();
+        setTimeout(function(){ a2.remove(); URL.revokeObjectURL(dl); }, 60000);
+        return Promise.resolve();
+      }
       let file = null, canShare = false;
       try {
         file = new File([blob], filename, {type: blob.type || 'application/pdf'});
@@ -3570,102 +3584,7 @@
     window.addEventListener('popstate', refreshCards);
   })();
 </script>
-<style id="formPopStyle">
-  #formPop{z-index:905;}
-  #formPop .tk-wrap{width:100%; max-width:380px; filter:drop-shadow(0 28px 34px rgba(0,0,0,.55)); animation:tkIn .55s cubic-bezier(.2,.9,.3,1.2);}
-  @keyframes tkIn{from{opacity:0; transform:translateY(-36px) rotate(-4deg) scale(.96);} to{opacity:1; transform:none;}}
-  @media (prefers-reduced-motion:reduce){ #formPop .tk-wrap{animation:none;} }
-  #formPop .tk{--stub:158px; position:relative; border-radius:16px; overflow:hidden; text-align:center;
-    -webkit-mask:radial-gradient(circle 13px at 0 calc(100% - var(--stub)), #0000 98%, #000) left/51% 100% no-repeat,
-                 radial-gradient(circle 13px at 100% calc(100% - var(--stub)), #0000 98%, #000) right/51% 100% no-repeat;
-            mask:radial-gradient(circle 13px at 0 calc(100% - var(--stub)), #0000 98%, #000) left/51% 100% no-repeat,
-                 radial-gradient(circle 13px at 100% calc(100% - var(--stub)), #0000 98%, #000) right/51% 100% no-repeat;}
-  #formPop .tk-top{position:relative; padding:26px 24px 30px; color:var(--forest-deep);
-    background:radial-gradient(circle at 85% 0%, rgba(255,255,255,.35), transparent 55%), linear-gradient(160deg, var(--gold-light), var(--gold));}
-  #formPop .tk-top::before{content:""; position:absolute; inset:9px; border:1.5px solid rgba(0,0,0,.22); border-radius:10px; pointer-events:none;}
-  #formPop .tk-badge{display:inline-block; font-size:.72rem; font-weight:900; letter-spacing:.06em; padding:4px 14px; border-radius:99px; background:var(--forest-deep); color:var(--gold-light); margin-bottom:12px;}
-  #formPop .tk-ic{display:block; margin:0 auto 6px; width:42px; height:42px;}
-  #formPop .tk-top h3{font-size:1.3rem; font-weight:900; line-height:1.4; margin:0 0 6px; color:var(--forest-deep);}
-  #formPop .tk-top p{font-size:.92rem; font-weight:700; margin:0; opacity:.82;}
-  #formPop .tk-perf{position:absolute; left:20px; right:20px; bottom:var(--stub); border-top:2px dashed rgba(0,0,0,.35); pointer-events:none;}
-  #formPop .tk-stub{height:var(--stub); background:var(--paper); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:14px 22px 16px;}
-  #formPop .tk-go{display:block; width:100%; box-sizing:border-box; padding:13px 16px; border-radius:8px; background:var(--gold); color:var(--forest-deep); font-weight:900; font-size:1rem; text-decoration:none; text-align:center; transition:.2s; box-shadow:0 8px 18px -8px rgba(0,0,0,.6);}
-  #formPop .tk-go:hover{transform:translateY(-2px); filter:brightness(1.12);}
-  #formPop .tk-bars{width:72%; height:22px; opacity:.5; color:var(--heading);
-    background:repeating-linear-gradient(90deg, currentColor 0 2px, transparent 2px 5px, currentColor 5px 6px, transparent 6px 10px, currentColor 10px 13px, transparent 13px 15px, currentColor 15px 16px, transparent 16px 20px);}
-  #formPop .fp-x{position:absolute; top:14px; left:14px; z-index:2; width:32px; height:32px; border-radius:50%; border:1.5px solid rgba(0,0,0,.4); background:rgba(255,255,255,.25); color:var(--forest-deep); font-size:16px; font-weight:900; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:.2s;}
-  #formPop .fp-x:hover{background:var(--forest-deep); color:var(--gold-light);}
-</style>
-<div class="card-pop" id="formPop" role="dialog" aria-modal="true" aria-labelledby="formPopTitle" hidden>
-  <div class="tk-wrap">
-    <div class="tk">
-      <button type="button" class="fp-x" id="formPopClose" aria-label="إغلاق">✕</button>
-      <div class="tk-top">
-        <span class="tk-badge">تذكرة لقاء</span>
-        <svg class="tk-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2.5 2.5 0 0 0 0 6v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2.5 2.5 0 0 0 0-6z"/><path d="m12 8.8.9 1.9 2.1.3-1.5 1.5.4 2.1-1.9-1-1.9 1 .4-2.1L9 11l2.1-.3z"/></svg>
-        <h3 id="formPopTitle">تحب تلتقي بالأستاذ شادي الحايك؟</h3>
-        <p>عبّي الفورم وبنتواصل معك</p>
-      </div>
-      <div class="tk-perf"></div>
-      <div class="tk-stub">
-        <a class="tk-go" id="formPopGo" href="https://forms.gle/5tGyqxUTHRm9fjqSA" target="_blank" rel="noopener">عبّي الفورم ←</a>
-        <div class="tk-bars" aria-hidden="true"></div>
-      </div>
-    </div>
-  </div>
-</div>
-<script>
-  // ===== بوب أب فورم اللقاء مع الأستاذ شادي الحايك =====
-  // يظهر بعد 3 ثواني من دخول الطالب للموقع، ويختفي لحاله بعد تاريخ الانتهاء بدون أي تعديل.
-  // لتغيير المدة: عدّل التاريخ بالسطر التالي فقط (بتوقيت الأردن +03:00).
-  (function(){
-    var FORM_POPUP_END   = '2026-10-23T00:00:00+03:00';
-    var FORM_POPUP_DELAY = 3000;
-    var pop = document.getElementById('formPop');
-    var site = document.getElementById('siteContent');
-    if (!pop || !site) return;
-    var test = false;
-    try { test = new URLSearchParams(location.search).has('testform'); } catch(e){}   // للمعاينة: ?testform=1
-    var timer = null, shown = false;
 
-    function userKey(){
-      var u = null; try { u = (typeof getSessionUser === 'function') ? getSessionUser() : null; } catch(e){}
-      return 'ao_form_done_' + ((u && u.phone) || 'anon');
-    }
-    function expired(){ return !test && Date.now() >= new Date(FORM_POPUP_END).getTime(); }
-    function isDone(){ try { return !test && getRemembered(userKey()) === '1'; } catch(e){ return false; } }
-    function markDone(){ try { safeStorageSet(userKey(), '1'); setCookie(userKey(), '1', 30); } catch(e){} }
-    function hide(){ pop.hidden = true; }
-    function examOpen(){ return !!document.querySelector('.qx:not([hidden])'); }
-
-    function tryShow(){
-      if (shown || expired() || isDone()) return;
-      if (!site.classList.contains('unlocked')) return;
-      if (examOpen()){ timer = setTimeout(tryShow, 5000); return; }   // ما نقاطع طالب وهو بالامتحان
-      shown = true; pop.hidden = false;
-      var go = document.getElementById('formPopGo'); if (go) go.focus();
-    }
-    function schedule(){
-      clearTimeout(timer); shown = false;
-      if (expired() || isDone()) return;
-      timer = setTimeout(tryShow, FORM_POPUP_DELAY);
-    }
-
-    document.getElementById('formPopClose').addEventListener('click', hide);          // ✕ : يسكّره (بيرجع بالزيارة الجاية)
-    pop.addEventListener('click', function(e){ if (e.target === pop) hide(); });
-    document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !pop.hidden) hide(); });
-    document.getElementById('formPopGo').addEventListener('click', function(){ markDone(); hide(); });  // عبّى الفورم: ما بيظهر ثاني
-
-    var wasUnlocked = site.classList.contains('unlocked');
-    if (wasUnlocked) schedule();
-    new MutationObserver(function(){
-      var now = site.classList.contains('unlocked');
-      if (now && !wasUnlocked) schedule();
-      if (!now){ clearTimeout(timer); hide(); }
-      wasUnlocked = now;
-    }).observe(site, { attributes: true, attributeFilter: ['class'] });
-  })();
-</script>
 
 </body>
 </html>
