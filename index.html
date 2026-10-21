@@ -2883,28 +2883,60 @@
     const url = URL.createObjectURL(blob);
     function openTab(){
       const w = window.open(url, '_blank');
-      if (!w) alert('الملف انحجب من المتصفح. اسمح بالنوافذ المنبثقة وجرّب مرة ثانية.');
+      if (!w) window.location.href = url;
     }
-    if (IS_IOS){
-      try {
-        const file = new File([blob], filename, {type: blob.type || 'application/pdf'});
-        if (navigator.canShare && navigator.canShare({files: [file]})){
-          navigator.share({files: [file], title: filename}).catch(function(e){
-            if (e && e.name === 'AbortError') return;
+    function closeSheet(){ const o = document.getElementById('saveSheet'); if (o) o.remove(); }
+    function showSheet(canShare, file){
+      closeSheet();
+      const o = document.createElement('div'); o.id = 'saveSheet';
+      o.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:20px;direction:rtl;font-family:Tajawal,sans-serif;';
+      const box = document.createElement('div');
+      box.style.cssText = 'background:#16213E;color:#F3EFE3;border:2px solid #FDBA21;border-radius:14px;padding:22px 18px;max-width:340px;width:100%;text-align:center;';
+      const msg = document.createElement('p'); msg.textContent = 'الملف جاهز ✅'; msg.style.cssText = 'font-size:1.1rem;font-weight:800;margin:0 0 14px;';
+      function mk(txt, primary){
+        const b = document.createElement('button'); b.type = 'button'; b.textContent = txt;
+        b.style.cssText = 'display:block;width:100%;margin:8px 0 0;padding:13px;border-radius:8px;font-size:1rem;font-weight:800;border:2px solid #FDBA21;font-family:inherit;cursor:pointer;' + (primary ? 'background:#FDBA21;color:#0B1220;' : 'background:transparent;color:#FDBA21;');
+        return b;
+      }
+      box.appendChild(msg);
+      if (canShare){
+        const go = mk('📥 حفظ الملف', true);
+        go.addEventListener('click', function(){
+          navigator.share({files: [file], title: filename}).then(closeSheet).catch(function(err){
+            if (err && err.name === 'AbortError') return;
             openTab();
           });
-          setTimeout(function(){ URL.revokeObjectURL(url); }, 120000);
-          return;
-        }
+        });
+        box.appendChild(go);
+      }
+      const op = mk(canShare ? 'فتح الملف' : '📄 فتح الملف وحفظه', !canShare);
+      op.addEventListener('click', function(){ openTab(); });
+      box.appendChild(op);
+      const cl = mk('إغلاق', false); cl.style.border = 'none'; cl.addEventListener('click', closeSheet);
+      box.appendChild(cl);
+      o.appendChild(box); document.body.appendChild(o);
+    }
+    if (IS_IOS){
+      let file = null, canShare = false;
+      try {
+        file = new File([blob], filename, {type: blob.type || 'application/pdf'});
+        canShare = !!(navigator.canShare && navigator.canShare({files: [file]}));
       } catch(e){}
-      openTab();
-      setTimeout(function(){ URL.revokeObjectURL(url); }, 120000);
-      return;
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 600000);
+      if (canShare){
+        return navigator.share({files: [file], title: filename}).catch(function(err){
+          if (err && err.name === 'AbortError') return;
+          showSheet(true, file);   // انتهت صلاحية الضغطة بعد التجهيز: بنخلّي الطالب يضغط مرة وحدة بس
+        });
+      }
+      showSheet(false, null);
+      return Promise.resolve();
     }
     const a = document.createElement('a');
     a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 10000);
+    return Promise.resolve();
   }
   function wsDownload(id){
     id = id || wsCur; const d = wsData(id); if (!d) return;
@@ -3423,8 +3455,6 @@
     function downloadPdf(d){
       var rv = d.querySelector('.qx-review');
       if (!rv || !rv.querySelector('.qx-q')) return Promise.reject(new Error('لا توجد نتيجة'));
-      // آيفون: توليد PDF بالمتصفح بيعلّق (حد ذاكرة الكانفاس)، فبنروح مباشرة لنافذة الطباعة (حفظ كـ PDF)
-      if (/iPad|iPhone|iPod/.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return Promise.reject(new Error('ios-print'));
       var doc = document.createElement('div'); doc.className = 'pdf-doc'; doc.setAttribute('dir', 'rtl');
       doc.appendChild(makeHead(d));
       var clone = rv.cloneNode(true);
@@ -3437,10 +3467,10 @@
           margin: [10, 8, 10, 8],
           filename: fname,
           image: { type: 'jpeg', quality: 0.95 },
-          html2canvas: { scale: 1.5, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0 },
+          html2canvas: { scale: (typeof IS_IOS !== 'undefined' && IS_IOS) ? 1 : 1.5, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0 },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
           pagebreak: { mode: ['css', 'legacy'], avoid: ['.qx-q', '.pdf-head'] }
-        }).from(doc).save();
+        }).from(doc).outputPdf('blob').then(function(blob){ return saveBlobFile(blob, fname); });
       }), new Promise(function(_, rej){ setTimeout(function(){ rej(new Error('timeout')); }, 25000); })]);
     }
 
