@@ -2858,21 +2858,40 @@
       }).catch(function(err){ console.warn('تعذر تسجيل الملف بالشيت:', err); });
     } catch(err){ console.warn(err); }
   }
-  function wsDownload(id){
-    id = id || wsCur; const d = wsData(id); if (!d) return;
-    // آيفون/آيباد (سفاري وكروم): نوع الملف octet-stream عشان ما يفتحه عرض ويطلع سؤال التنزيل/الحفظ مباشرة
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    const blob = new Blob([wsBytes(d)], {type: isIOS ? 'application/octet-stream' : 'application/pdf'});
+  // ===== حفظ ملف على الجهاز مباشرة (آيفون / آيباد / أندرويد / كمبيوتر) =====
+  function isIOSDevice(){
+    try { return /iPad|iPhone|iPod/.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); } catch(e){ return false; }
+  }
+  // لازم تنندعى مباشرة من ضغطة المستخدم (بدون انتظار) عشان سفاري يسمح بالتنزيل
+  function saveFileToDevice(bytes, fileName){
+    const canDl = ('download' in document.createElement('a'));
+    // آيفون/آيباد: نوع الملف octet-stream عشان ما يفتحه عرض ويطلع سؤال التنزيل/الحفظ مباشرة (سفاري وكروم)
+    const blob = new Blob([bytes], {type: (isIOSDevice() && canDl) ? 'application/octet-stream' : 'application/pdf'});
     const url = URL.createObjectURL(blob);
+    if (!canDl){
+      // آيفون قديم (قبل iOS 13) ما بيدعم خاصية download: بنفتح الـPDF وبيحفظه من زر المشاركة
+      let w = null; try { w = window.open(url, '_blank'); } catch(e){}
+      if (!w) location.href = url;
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 300000);
+      return;
+    }
     const a = document.createElement('a');
-    a.href = url; a.download = d.file; a.style.display = 'none';
+    a.href = url; a.download = fileName; a.rel = 'noopener'; a.style.display = 'none';
     document.body.appendChild(a); a.click();
     setTimeout(function(){ a.remove(); URL.revokeObjectURL(url); }, 60000);
+  }
+  window.saveFileToDevice = saveFileToDevice; window.isIOSDevice = isIOSDevice;
+
+  let wsExam = null;   // نتيجة امتحان مفتوحة بالمعاينة: {bytes, file, urls}
+  function wsDownload(id){
+    if (!id && wsExam){ saveFileToDevice(wsExam.bytes, wsExam.file); return; }
+    id = id || wsCur; const d = wsData(id); if (!d) return;
+    saveFileToDevice(wsBytes(d), d.file);
     wsLog('تحميل', d.name);
   }
   function wsView(id){
     const d = wsData(id); if (!d) return;
-    wsCur = id;
+    wsCur = id; wsExam = null;
     document.getElementById('wsTitle').textContent = d.name;
     const body = document.getElementById('wsBody');
     body.innerHTML = '';
@@ -2882,13 +2901,25 @@
     body.scrollTop = 0;
     wsLog('عرض', d.name);
   }
+  // معاينة نتيجة امتحان (صفحات) مع زر تنزيل — بتنفتح بعد ما يجهز الـPDF
+  function wsShowExam(title, urls, bytes, file){
+    wsCur = null; wsExam = { bytes: bytes, file: file, urls: urls };
+    document.getElementById('wsTitle').textContent = title;
+    const body = document.getElementById('wsBody');
+    body.innerHTML = '';
+    urls.forEach(function(src){ const im = document.createElement('img'); im.src = src; im.alt = title; body.appendChild(im); });
+    document.getElementById('wsViewer').hidden = false;
+    document.body.style.overflow = 'hidden';
+    body.scrollTop = 0;
+  }
   function wsClose(){
     document.getElementById('wsViewer').hidden = true;
     document.getElementById('wsBody').innerHTML = '';
-    document.body.style.overflow = '';
+    if (wsExam){ wsExam.urls.forEach(function(u){ try { URL.revokeObjectURL(u); } catch(e){} }); wsExam = null; }
+    document.body.style.overflow = document.querySelector('.qx:not([hidden])') ? 'hidden' : '';
   }
   document.addEventListener('keydown', function(e){ if (e.key === 'Escape') wsClose(); });
-  window.wsView = wsView; window.wsDownload = wsDownload; window.wsClose = wsClose;
+  window.wsView = wsView; window.wsDownload = wsDownload; window.wsClose = wsClose; window.wsShowExam = wsShowExam;
 
 </script>
 
@@ -3350,17 +3381,34 @@
 <script>
   // ===== تنزيل نتيجة الامتحان PDF (ملف حقيقي) — بعد التسليم فقط، من داخل الامتحان ومن بطاقة الامتحان =====
   (function(){
-    var LIB = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+    // مكتبة الرسم (html2canvas) — بنجرّب أكثر من مصدر. الرسم بصير سؤال سؤال (مش لوحة وحدة ضخمة) عشان الايفون ما يعلق.
+    var H2C_SRCS = [
+      'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
+      'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js'
+    ];
     var libP = null, hiddenEls = [], oldTitle = null;
+    var PG_W = 1240, PG_H = 1754;                       // صفحة A4 بدقة ~150dpi
+    var CONTENT_MM = 194;                               // عرض المحتوى (A4 - هوامش 8mm)
+    var MX = Math.round(8 * PG_W / 210), MY = Math.round(10 * PG_H / 297);
+    var CONTENT_W = PG_W - 2 * MX;
+    var SCALE = CONTENT_W / (CONTENT_MM * 96 / 25.4);
 
-    function loadLib(){
-      if (window.html2pdf) return Promise.resolve();
-      if (libP) return libP;
-      libP = new Promise(function(res, rej){
-        var s = document.createElement('script'); s.src = LIB;
-        s.onload = res; s.onerror = function(){ libP = null; rej(new Error('تعذر تحميل مكتبة PDF')); };
-        document.head.appendChild(s);
+    function loadScript(src, ms){
+      return new Promise(function(res, rej){
+        var s = document.createElement('script'), t = setTimeout(function(){ s.onload = s.onerror = null; rej(new Error('timeout')); }, ms);
+        s.onload = function(){ clearTimeout(t); res(); };
+        s.onerror = function(){ clearTimeout(t); rej(new Error('load')); };
+        s.src = src; document.head.appendChild(s);
       });
+    }
+    function loadLib(){
+      if (window.html2canvas) return Promise.resolve();
+      if (libP) return libP;
+      libP = H2C_SRCS.reduce(function(p, src){
+        return p.catch(function(){ return window.html2canvas ? null : loadScript(src, 20000); });
+      }, Promise.reject(new Error('start'))).then(function(){
+        if (!window.html2canvas) throw new Error('تعذر تحميل مكتبة الرسم');
+      }).catch(function(e){ libP = null; throw e; });
       return libP;
     }
     function titleOf(d){ var h = d.querySelector('.qx-top h2'); return h ? h.textContent.trim() : 'امتحان إلكتروني'; }
@@ -3377,25 +3425,126 @@
       return head;
     }
 
-    // ---- تنزيل PDF مباشر على الجهاز ----
-    function downloadPdf(d){
+    // ---- بناء ملف PDF يدويًا من صور JPEG (بدون مكتبة، وخفيف على الذاكرة) ----
+    function ascii(str){ var a = new Uint8Array(str.length); for (var i = 0; i < str.length; i++) a[i] = str.charCodeAt(i) & 255; return a; }
+    function hex16(str){ var h = 'FEFF'; for (var i = 0; i < str.length; i++) h += ('0000' + str.charCodeAt(i).toString(16)).slice(-4); return '<' + h + '>'; }
+    function makePdf(jpegs, title){
+      var parts = [], pos = 0, offs = [], N = jpegs.length, i;
+      function put(x){ var u = (typeof x === 'string') ? ascii(x) : x; parts.push(u); pos += u.length; }
+      function obj(n, head, stream){
+        offs[n] = pos; put(n + ' 0 obj\n' + head);
+        if (stream){ put('\nstream\n'); put(stream); put('\nendstream'); }
+        put('\nendobj\n');
+      }
+      var kids = []; for (i = 0; i < N; i++) kids.push((3 + i * 3) + ' 0 R');
+      var infoN = 3 + N * 3;
+      put('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n');
+      obj(1, '<</Type/Catalog/Pages 2 0 R>>');
+      obj(2, '<</Type/Pages/Kids[' + kids.join(' ') + ']/Count ' + N + '>>');
+      for (i = 0; i < N; i++){
+        var p = 3 + i * 3, c = p + 1, im = p + 2, cs = 'q 595.28 0 0 841.89 0 0 cm /Im0 Do Q';
+        obj(p, '<</Type/Page/Parent 2 0 R/MediaBox[0 0 595.28 841.89]/Resources<</XObject<</Im0 ' + im + ' 0 R>>>>/Contents ' + c + ' 0 R>>');
+        obj(c, '<</Length ' + cs.length + '>>', ascii(cs));
+        obj(im, '<</Type/XObject/Subtype/Image/Width ' + PG_W + '/Height ' + PG_H + '/ColorSpace/DeviceRGB/BitsPerComponent 8/Filter/DCTDecode/Length ' + jpegs[i].length + '>>', jpegs[i]);
+      }
+      obj(infoN, '<</Title ' + hex16(title || '') + '>>');
+      var xo = pos, size = infoN + 1, x = 'xref\n0 ' + size + '\n0000000000 65535 f \n';
+      for (i = 1; i < size; i++) x += ('0000000000' + offs[i]).slice(-10) + ' 00000 n \n';
+      x += 'trailer\n<</Size ' + size + '/Root 1 0 R/Info ' + infoN + ' 0 R>>\nstartxref\n' + xo + '\n%%EOF';
+      put(x);
+      var out = new Uint8Array(pos), at = 0;
+      parts.forEach(function(u){ out.set(u, at); at += u.length; });
+      return out;
+    }
+
+    function withTimeout(p, ms){
+      return new Promise(function(res, rej){
+        var t = setTimeout(function(){ rej(new Error('timeout')); }, ms);
+        p.then(function(v){ clearTimeout(t); res(v); }, function(e){ clearTimeout(t); rej(e); });
+      });
+    }
+    function pause(){ return new Promise(function(r){ setTimeout(r, 30); }); }   // فرصة للمتصفح يفرّغ الذاكرة بين كل سؤال
+
+    // نقسم النتيجة لقطع: الترويسة + كل سؤال لحاله
+    function buildBlocks(d){
       var rv = d.querySelector('.qx-review');
-      if (!rv || !rv.querySelector('.qx-q')) return Promise.reject(new Error('لا توجد نتيجة'));
-      var doc = document.createElement('div'); doc.className = 'pdf-doc'; doc.setAttribute('dir', 'rtl');
-      doc.appendChild(makeHead(d));
+      if (!rv || !rv.querySelector('.qx-q')) return null;
+      var blocks = [{ el: makeHead(d), review: false }];
       var clone = rv.cloneNode(true);
-      Array.prototype.slice.call(clone.children).forEach(function(c){ if (c.tagName === 'H3' || c.tagName === 'P') c.remove(); });
-      doc.appendChild(clone);
-      var fname = (titleOf(d) + (userName() ? ' - ' + userName() : '')).replace(/[\\\/:*?"<>|]/g, '').trim() + '.pdf';
-      return loadLib().then(function(){
-        return window.html2pdf().set({
-          margin: [10, 8, 10, 8],
-          filename: fname,
-          image: { type: 'jpeg', quality: 0.95 },
-          html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0 },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-          pagebreak: { mode: ['css', 'legacy'], avoid: ['.qx-q', '.pdf-head'] }
-        }).from(doc).save();
+      Array.prototype.slice.call(clone.children).forEach(function(c){
+        if (c.tagName === 'H3' || c.tagName === 'P') return;
+        if (c.classList.contains('qx-q') || c.classList.contains('qx-ctx') || !c.children.length) blocks.push({ el: c, review: true });
+        else Array.prototype.slice.call(c.children).forEach(function(k){ blocks.push({ el: k, review: true }); });   // حاوية الأسئلة → كل سؤال لحاله
+      });
+      return blocks;
+    }
+    // رسم قطعة وحدة على canvas صغير (بدون ما نستنسخ باقي الصفحة الثقيلة)
+    function renderBlock(b){
+      var host = document.createElement('div'); host.className = 'pdfx-overlay';
+      host.setAttribute('style', 'position:fixed;left:0;top:0;right:0;bottom:0;overflow:hidden;opacity:0;pointer-events:none;z-index:-1;');
+      var box = document.createElement('div');
+      box.setAttribute('style', 'position:absolute;left:0;top:0;width:' + CONTENT_MM + 'mm;height:auto;background:#fff;');
+      var doc = document.createElement('div'); doc.className = 'pdf-doc'; doc.setAttribute('dir', 'rtl');
+      if (b.review){
+        var rw = document.createElement('div'); rw.className = 'qx-review ex-review'; rw.style.margin = '0';
+        rw.appendChild(b.el); doc.appendChild(rw);
+      } else doc.appendChild(b.el);
+      box.appendChild(doc); host.appendChild(box); document.body.appendChild(host);
+      function done(){ if (host.parentNode) host.parentNode.removeChild(host); }
+      return window.html2canvas(box, {
+        scale: SCALE, useCORS: true, backgroundColor: '#ffffff', logging: false,
+        scrollX: 0, scrollY: 0, windowWidth: 1000, windowHeight: 1400, imageTimeout: 8000,
+        ignoreElements: function(el){ return el.parentNode === document.body && !(el.classList && el.classList.contains('pdfx-overlay')); }
+      }).then(function(c){ done(); return c; }, function(e){ done(); throw e; });
+    }
+    function newPage(){
+      var c = document.createElement('canvas'); c.width = PG_W; c.height = PG_H;
+      var x = c.getContext('2d'); x.fillStyle = '#ffffff'; x.fillRect(0, 0, PG_W, PG_H);
+      return { c: c, x: x, y: MY };
+    }
+    function pageToJpeg(pg){
+      var url = pg.c.toDataURL('image/jpeg', 0.9);
+      pg.c.width = pg.c.height = 0;                       // نفرّغ الذاكرة (مهم للايفون)
+      var bin = atob(url.slice(url.indexOf(',') + 1)), u8 = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      return u8;
+    }
+    // نرسم كل قطعة ونركّبها على صفحات A4
+    function buildPages(d, onProgress){
+      var blocks = buildBlocks(d);
+      if (!blocks) return Promise.reject(new Error('لا توجد نتيجة'));
+      var jpegs = [], pg = newPage(), i = 0, n = blocks.length, availH = PG_H - 2 * MY;
+      function step(){
+        if (i >= n){ jpegs.push(pageToJpeg(pg)); return jpegs; }
+        if (onProgress) onProgress(i + 1, n);
+        var b = blocks[i++];
+        return withTimeout(renderBlock(b), 30000).then(function(c){
+          if (c.width && c.height){
+            var w = CONTENT_W, h = Math.round(c.height * (w / c.width));
+            if (h > availH){ w = Math.round(w * availH / h); h = availH; }
+            if (pg.y > MY && pg.y + h > PG_H - MY){ jpegs.push(pageToJpeg(pg)); pg = newPage(); }
+            pg.x.drawImage(c, 0, 0, c.width, c.height, MX + Math.round((CONTENT_W - w) / 2), pg.y, w, h);
+            pg.y += h;
+          }
+          c.width = c.height = 0;
+          return pause().then(step);
+        });
+      }
+      return Promise.resolve().then(step);
+    }
+
+    // ---- تنزيل PDF: آيفون/آيباد → معاينة صفحات + زر تنزيل مباشر ، باقي الأجهزة → تنزيل مباشر ----
+    function downloadPdf(d, onProgress){
+      var ttl = titleOf(d), who = userName();
+      var fname = (ttl + (who ? ' - ' + who : '')).replace(/[\\\/:*?"<>|]/g, '').trim() + '.pdf';
+      return loadLib().then(function(){ return buildPages(d, onProgress); }).then(function(jpegs){
+        var bytes = makePdf(jpegs, ttl);
+        if (window.isIOSDevice && window.isIOSDevice() && window.wsShowExam){
+          var urls = jpegs.map(function(u8){ return URL.createObjectURL(new Blob([u8], { type: 'image/jpeg' })); });
+          window.wsShowExam(ttl + (who ? ' — ' + who : ''), urls, bytes, fname);
+        } else {
+          window.saveFileToDevice(bytes, fname);
+        }
       });
     }
 
@@ -3422,7 +3571,8 @@
     }
     window.addEventListener('afterprint', cleanup);
 
-    function busy(btn, on, txt){ btn.disabled = on; if (on){ btn._t = btn.textContent; btn.textContent = '⏳ جاري تجهيز الملف…'; } else if (btn._t){ btn.textContent = btn._t; } }
+    function busy(btn, on, txt){ btn.disabled = on; if (on){ if (!btn._busy){ btn._t = btn.textContent; btn._busy = true; } btn.textContent = txt || '⏳ جاري تجهيز الملف…'; } else { btn._busy = false; if (btn._t) btn.textContent = btn._t; } }
+    function prog(btn){ return function(i, n){ busy(btn, true, '⏳ جاري التجهيز ' + i + '/' + n); }; }
 
     // ---- زر داخل صفحة النتيجة ----
     function ensureBtn(res){
@@ -3431,7 +3581,7 @@
       b.type = 'button'; b.className = 'btn btn-outline qx-pdf-btn'; b.textContent = '📄 تنزيل PDF';
       b.addEventListener('click', function(){
         var d = res.closest('.qx'); busy(b, true);
-        downloadPdf(d).then(function(){ busy(b, false); }, function(){ busy(b, false); printFallback(d); });
+        downloadPdf(d, prog(b)).then(function(){ busy(b, false); }, function(err){ try { console.warn(err); } catch(e){} busy(b, false); printFallback(d); });
       });
       var last = null;
       Array.prototype.forEach.call(res.children, function(c){ if (c.tagName === 'BUTTON') last = c; });
@@ -3468,7 +3618,8 @@
           if (!sv){ refreshCards(); return; }
           busy(btn, true);
           try { desc.prep(sv); } catch(err){ busy(btn, false); return; }
-          downloadPdf(document.getElementById(desc.dialog)).then(function(){ busy(btn, false); }, function(){
+          downloadPdf(document.getElementById(desc.dialog), prog(btn)).then(function(){ busy(btn, false); }, function(err){
+            try { console.warn(err); } catch(e){}
             busy(btn, false);
             alert('تعذّر تنزيل الملف تلقائياً. بنفتحلك الامتحان، اضغط تنزيل PDF من داخله.');
             desc.open();
