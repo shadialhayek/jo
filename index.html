@@ -2476,6 +2476,18 @@
   }
 
   // الجواب النهائي: بنحفظه، بنسجله بالشيت، وبنعرض رسالة الشكر
+  // إرسال جواب البطاقة للشيت (بصف الطالب نفسه، لازم يكون عنده رقم جوال)
+  function sendCardRow(u, key){
+    return sendToSheet({
+      المصدر: 'بطاقة الأستاذ',
+      الاسم: u.name,
+      الجوال: u.phone,
+      'الجيل/الفرع': u.track,
+      الحالة: CARD_ANSWERS[key],
+      الرسالة: CARD_QUESTION,
+      التاريخ: new Date().toLocaleString('ar-JO')
+    }).catch(err => console.warn('تعذر إرسال إجابة البطاقة للشيت:', err));
+  }
   function finishCardAnswer(key){
     const u = getSessionUser();
     let waUrl = null;
@@ -2483,16 +2495,12 @@
       const ck = cardKey(u && u.phone ? u.phone : 'anon');
       safeStorageSet(ck, key);
       setCookie(ck, key, 365);
-      // بينسجّل بالشيت: الجواب بعمود "الحالة" والسؤال بعمود "الرسالة"
-      sendToSheet({
-        المصدر: 'بطاقة الأستاذ',
-        الاسم: (u && u.name) || 'غير مسجّل دخول',
-        الجوال: (u && u.phone) || '-',
-        'الجيل/الفرع': (u && u.track) || '-',
-        الحالة: CARD_ANSWERS[key],
-        الرسالة: CARD_QUESTION,
-        التاريخ: new Date().toLocaleString('ar-JO')
-      }).catch(err => console.warn('تعذر إرسال إجابة البطاقة للشيت:', err));
+      if (u && u.phone){
+        sendCardRow(u, key);
+      } else {
+        // زائر غير مسجّل: الشيت بيربط الجواب برقم الطالب، فبنحتفظ بالجواب وبنرسله لحظة تسجيل دخوله
+        safeStorageRemove('ao_card_anon_sent'); deleteCookie('ao_card_anon_sent');
+      }
     }
     if (key === 'want'){
       const track = (u && u.track) ? u.track : '';
@@ -2671,6 +2679,13 @@
       'الجيل/الفرع': trackVal,
       الحالة: loginStatus,
       التاريخ: new Date().toLocaleString('ar-JO')
+    }).then(function(){
+      // إذا الطالب جاوب على البطاقة قبل ما يسجّل: بنرسل جوابه الحين برقمه (بعد ما ينكتب صف دخوله)
+      const pk = getRemembered(cardKey('anon'));
+      if (pk && CARD_ANSWERS[pk] && !getRemembered('ao_card_anon_sent')){
+        safeStorageSet('ao_card_anon_sent', '1'); setCookie('ao_card_anon_sent', '1', 365);
+        setTimeout(function(){ sendCardRow({ name: nameVal, phone: normalizedPhone, track: trackVal }, pk); }, 1200);
+      }
     }).catch(err => console.warn('تعذر إرسال بيانات تسجيل الدخول للشيت:', err));
   });
 
