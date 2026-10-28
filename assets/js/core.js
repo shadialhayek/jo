@@ -383,7 +383,7 @@
 
   // ===================== إعدادات ربط Google Sheet =====================
   // رابط Google Apps Script (Web App) اللي بيسجل البيانات بجدول Excel/Google Sheet
-  const SHEET_ENDPOINT = "https://script.google.com/macros/s/AKfycbyxXK3gr8BGPgI5DX_lRhQd_3jvFyoPP_qKrTpuieeqMe1R_9s-AFXYThWI2GIKOxQ/exec";
+  const SHEET_ENDPOINT = "https://script.google.com/macros/s/AKfycbyJlWWWHWFRdZezcH2MWtttxhcF3c1nrD8iWpAbAxJkV7I9RPKvqUVvndP3OzqXDTQ/exec";
 
   function sendToSheet(data){
     try{
