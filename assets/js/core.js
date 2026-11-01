@@ -459,16 +459,16 @@
   // ===== لوحة الشرف: فلترة البحث عن اسم طالب =====
   const rankingSearch = document.getElementById('rankingSearch');
   const rankingCount = document.getElementById('rankingCount');
-  const rankingRows = document.querySelectorAll('#rankingBody tr');
+  const getRankingRows = () => document.querySelectorAll('#rankingBody tr');
   function updateRankingCount(visible){
-    if (rankingCount) rankingCount.textContent = 'عدد الأسماء الظاهرة: ' + visible + ' من ' + rankingRows.length;
+    if (rankingCount) rankingCount.textContent = 'عدد الأسماء الظاهرة: ' + visible + ' من ' + getRankingRows().length;
   }
   if (rankingSearch){
-    updateRankingCount(rankingRows.length);
+    updateRankingCount(getRankingRows().length);
     rankingSearch.addEventListener('input', function(){
       const q = this.value.trim();
       let visible = 0;
-      rankingRows.forEach(tr => {
+      getRankingRows().forEach(tr => {
         const match = !q || qnorm(tr.dataset.name).indexOf(qnorm(q)) !== -1;
         tr.classList.toggle('no-match', !match);
         if (match) visible++;
