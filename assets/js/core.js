@@ -336,6 +336,7 @@
 
     // وقت تسجيل الدخول (الجلسة بتنتهي بعد ساعة من هالوقت)
     const loginTime = String(Date.now());
+    safeStorageSet('ao_acc_chk', loginTime);   // لسا مسجّل هسه: ما منفحص حسابه قبل ما ينكتب صفه بالشيت
     safeStorageSet('ao_login_time', loginTime);
     setCookie('ao_login_time', loginTime, 7);
     // بيانات الطالب طول الجلسة (بنحتاجها لإجابة سؤال البطاقة)
@@ -398,6 +399,67 @@
       return Promise.resolve();
     }
   }
+
+  // ===================== التحقق إن حساب الطالب لسا موجود بالشيت =====================
+  // الحساب = صف الطالب بورقة "الطلاب". إذا الأستاذ حذف الصف: بنمسح كل بيانات الطالب من جهازه
+  // (دخول + علامات الامتحانات المحفوظة) وبنرجّعه لتسجيل الدخول كطالب جديد.
+  // إذا الاتصال فشل أو تأخر: بنكمّل عادي (ما بنطرد حدا بسبب النت).
+  const ACCOUNT_CHECK_EVERY_MS = 5 * 60 * 1000;   // فحص تلقائي كل 5 دقايق بالأكثر
+  const LOGIN_GRACE_MS = 60 * 1000;               // أول دقيقة بعد تسجيل الدخول ما منفحص
+
+  function wipeStudentLocal(){
+    try { localStorage.clear(); } catch(err){ /* تجاهل */ }
+    try { sessionStorage.clear(); } catch(err){ /* تجاهل */ }
+    try {
+      document.cookie.split(';').forEach(function(c){
+        const n = c.split('=')[0].trim();
+        if (n) document.cookie = n + '=; max-age=0; path=/';
+      });
+    } catch(err){ /* تجاهل */ }
+  }
+
+  // بترجّع Promise<true> إذا الحساب سليم (أو ما قدرنا نتأكد)، و false إذا انحذف
+  let accCheckBusy = null;
+  function verifyAccount(force){
+    if (accCheckBusy) return accCheckBusy;   // فحص شغّال أصلًا: ما منكرره
+    const u = getSessionUser();
+    if (!u || !u.phone || !isSessionValid()) return Promise.resolve(true);
+    if (Date.now() - getLoginTime() < LOGIN_GRACE_MS) return Promise.resolve(true);
+    const last = parseInt(safeStorageGet('ao_acc_chk'), 10) || 0;
+    if (!force && Date.now() - last < ACCOUNT_CHECK_EVERY_MS) return Promise.resolve(true);
+
+    const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    const timer = setTimeout(function(){ if (ctrl) ctrl.abort(); }, 8000);
+    accCheckBusy = fetch(SHEET_ENDPOINT + '?action=check&phone=' + encodeURIComponent(u.phone) + '&_=' + Date.now(), ctrl ? { signal: ctrl.signal } : {})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        clearTimeout(timer);
+        if (d && d.ok && d.exists === false){
+          const msg = 'تم إلغاء حسابك، سجّل دخولك من جديد.';
+          wipeStudentLocal();
+          if (typeof applyVisited === 'function') applyVisited();   // ينشال الأخضر عن كل الكروت
+          closeOpenExams();
+          lockSite(msg);
+          openLogin(msg);
+          return false;
+        }
+        if (d && d.ok) safeStorageSet('ao_acc_chk', String(Date.now()));
+        return true;
+      })
+      .catch(function(){ clearTimeout(timer); return true; })
+      .then(function(ok){ accCheckBusy = null; return ok; });
+    return accCheckBusy;
+  }
+
+  // ملاحظة: ما عاد في أي "انتظار" قبل فتح الامتحان. الفحص بيصير بالخلفية (exam-save.js بيستدعي verifyAccount)،
+  // وإذا الحساب انحذف بنسكّر أي امتحان مفتوح وبنرجّع الطالب لتسجيل الدخول.
+  function closeOpenExams(){
+    try { document.querySelectorAll('.qx:not([hidden])').forEach(function(e){ e.hidden = true; }); } catch(err){}
+  }
+
+  verifyAccount(false);
+  document.addEventListener('visibilitychange', function(){ if (!document.hidden) verifyAccount(false); });
+  window.addEventListener('focus', function(){ verifyAccount(false); });
 
   // ===================== تحقق من رقم الجوال الأردني =====================
   function normalizeJoPhone(v){
