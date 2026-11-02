@@ -419,9 +419,7 @@
   }
 
   // بترجّع Promise<true> إذا الحساب سليم (أو ما قدرنا نتأكد)، و false إذا انحذف
-  let accCheckBusy = null;
   function verifyAccount(force){
-    if (accCheckBusy) return accCheckBusy;   // فحص شغّال أصلًا: ما منكرره
     const u = getSessionUser();
     if (!u || !u.phone || !isSessionValid()) return Promise.resolve(true);
     if (Date.now() - getLoginTime() < LOGIN_GRACE_MS) return Promise.resolve(true);
@@ -429,16 +427,14 @@
     if (!force && Date.now() - last < ACCOUNT_CHECK_EVERY_MS) return Promise.resolve(true);
 
     const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-    const timer = setTimeout(function(){ if (ctrl) ctrl.abort(); }, 8000);
-    accCheckBusy = fetch(SHEET_ENDPOINT + '?action=check&phone=' + encodeURIComponent(u.phone) + '&_=' + Date.now(), ctrl ? { signal: ctrl.signal } : {})
+    const timer = setTimeout(function(){ if (ctrl) ctrl.abort(); }, 6000);
+    return fetch(SHEET_ENDPOINT + '?action=check&phone=' + encodeURIComponent(u.phone) + '&_=' + Date.now(), ctrl ? { signal: ctrl.signal } : {})
       .then(function(r){ return r.json(); })
       .then(function(d){
         clearTimeout(timer);
         if (d && d.ok && d.exists === false){
           const msg = 'تم إلغاء حسابك، سجّل دخولك من جديد.';
           wipeStudentLocal();
-          if (typeof applyVisited === 'function') applyVisited();   // ينشال الأخضر عن كل الكروت
-          closeOpenExams();
           lockSite(msg);
           openLogin(msg);
           return false;
@@ -446,16 +442,25 @@
         if (d && d.ok) safeStorageSet('ao_acc_chk', String(Date.now()));
         return true;
       })
-      .catch(function(){ clearTimeout(timer); return true; })
-      .then(function(ok){ accCheckBusy = null; return ok; });
-    return accCheckBusy;
+      .catch(function(){ clearTimeout(timer); return true; });
   }
 
-  // ملاحظة: ما عاد في أي "انتظار" قبل فتح الامتحان. الفحص بيصير بالخلفية (exam-save.js بيستدعي verifyAccount)،
-  // وإذا الحساب انحذف بنسكّر أي امتحان مفتوح وبنرجّع الطالب لتسجيل الدخول.
-  function closeOpenExams(){
-    try { document.querySelectorAll('.qx:not([hidden])').forEach(function(e){ e.hidden = true; }); } catch(err){}
-  }
+  // قبل فتح أي امتحان: فحص طازج (بدون كاش) ثم بنكمّل فتح الامتحان
+  const EXAM_BTN = '[onclick*="exOpen("],[onclick*="openPwExam("],[onclick*="openAngleExam("]';
+  let examClickBypass = null;
+  document.addEventListener('click', function(e){
+    if (!isSessionValid()) return;                // البوابة العادية فوق بتتولى الأمر
+    const el = e.target.closest ? e.target.closest(EXAM_BTN) : null;
+    if (!el || el === examClickBypass || el.closest('.gen-back,.back-link')) return;
+    if (Date.now() - getLoginTime() < LOGIN_GRACE_MS) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    verifyAccount(true).then(function(ok){
+      if (!ok) return;
+      examClickBypass = el;
+      try { el.click(); } finally { examClickBypass = null; }
+    });
+  }, true);
 
   verifyAccount(false);
   document.addEventListener('visibilitychange', function(){ if (!document.hidden) verifyAccount(false); });
