@@ -12,6 +12,7 @@
     });
   })();
   function openPwExam(){
+    if (examNeedLogin(openPwExam)) return;
     try { history.replaceState(history.state, '', '#exams/2010/piecewise'); } catch(e){}
     pwAns = [];
     document.querySelectorAll('#pwQuestions .qx-opt').forEach(function(b){ b.classList.remove('sel'); });
@@ -30,6 +31,7 @@
   }
   function submitPwExam(replay){
     if (!replay && examGetSaved('piecewise')) return;
+    if (!replay && examNeedLogin()) return;
     let left = 0;
     for (let i = 0; i < PW_KEY.length; i++) if (!pwAns[i]) left++;
     if (!replay && left && !confirm('بقي ' + left + ' سؤال بلا إجابة. هل تريد إنهاء الاختبار؟')) {

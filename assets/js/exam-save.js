@@ -1,3 +1,12 @@
+  // ===== لازم الطالب يكون مسجّل دخول قبل أي امتحان (حتى لو فتح الامتحان من رابط مباشر #exams/...) =====
+  function examNeedLogin(retry){
+    let u = null; try { u = getSessionUser(); } catch(e){}
+    if (isSessionValid() && u && u.phone) return false;
+    // بعد ما يسجّل دخول بنعيد فتح نفس الامتحان تلقائيًا
+    openLogin('سجّل دخولك لتبدأ الامتحان — علامتك لازم تنسجّل باسمك ورقمك', retry ? { click: retry } : null);
+    return true;
+  }
+
   // ===== محاولة واحدة فقط لكل امتحان: بنحفظ إجابات الطالب (حسب رقم جواله) وبنعرضها له بدل ما نفتح الامتحان من جديد =====
   function examSaveKey(id){ const u = getSessionUser() || {}; return 'ao_exam_' + (u.phone || 'anon') + '_' + id; }
   function examGetSaved(id){

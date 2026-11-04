@@ -12,6 +12,7 @@
     });
   })();
   function openAngleExam(){
+    if (examNeedLogin(openAngleExam)) return;
     try { history.replaceState(history.state, '', '#exams/2010/angle'); } catch(e){}
     angleAns = [];
     document.querySelectorAll('#qxQuestions .qx-opt').forEach(function(b){ b.classList.remove('sel'); });
@@ -30,6 +31,7 @@
   }
   function submitAngleExam(replay){
     if (!replay && examGetSaved('angle')) return;
+    if (!replay && examNeedLogin()) return;
     let left = 0;
     for (let i = 0; i < ANGLE_KEY.length; i++) if (!angleAns[i]) left++;
     if (!replay && left && !confirm('بقي ' + left + ' سؤال بلا إجابة. هل تريد إنهاء الامتحان؟')) {

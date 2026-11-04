@@ -13,6 +13,7 @@
     });
   });
   function exOpen(id){
+    if (examNeedLogin(function(){ exOpen(id); })) return;
     if (typeof examIsLocked === 'function' && examIsLocked(id)) return;   // لسه ما حان موعده
     const ex = EXAMS[id], d = document.getElementById('ex-' + id);
     try { history.replaceState(history.state, '', '#exams/' + (ex.gen||'2010') + '/' + id); } catch(e){}
@@ -35,6 +36,7 @@
   function exSubmit(id, replay){
     const ex = EXAMS[id], d = document.getElementById('ex-' + id), n = ex.key.length;
     if (!replay && examGetSaved(id)) return;
+    if (!replay && examNeedLogin()) return;
     let left = 0;
     for (let i = 0; i < n; i++) if (!ex.ans[i]) left++;
     if (!replay && left && !confirm('بقي ' + left + ' سؤال بلا إجابة. هل تريد إنهاء الاختبار؟')) {
