@@ -850,3 +850,11 @@
 .item-card.is-locked .item-card-btn:hover{background:transparent; transform:none;}
 .item-card.is-locked:hover{border-color:var(--line); transform:none;}
 @media (max-width:560px){ .exam-cd{max-width:none;} .exam-cd-boxes b{font-size:1.25rem;} }
+
+
+/* ===== حساب الطالب بالهيدر (تسجيل الدخول برمز واتساب) ===== */
+.nav-tail{display:flex; align-items:center; gap:12px;}
+.acct-slot{display:flex; align-items:center;}
+@media (max-width:900px){
+  .acct-slot{position:absolute; right:16px; top:50%; transform:translateY(-50%);}
+}

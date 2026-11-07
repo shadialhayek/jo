@@ -57,7 +57,7 @@
   }
 
   // ===== مدة الجلسة: ساعة واحدة من لحظة تسجيل الدخول =====
-  const SESSION_MS = 7 * 24 * 60 * 60 * 1000;   // أسبوع كامل على نفس الجهاز
+  const SESSION_MS = 400 * 24 * 60 * 60 * 1000;   // شبه دائمة: الحساب (واتساب) هو المرجع، وبيتجدد مع كل استخدام
 
   function getLoginTime(){
     const v = parseInt(getRemembered('ao_login_time'), 10);
@@ -97,7 +97,7 @@
   }
   function checkSession(){
     if (getRemembered('ao_login_time') && !isSessionValid()){
-      lockSite('انتهت مدة جلستك (أسبوع)، سجّل دخولك من جديد.');
+      lockSite('انتهت مدة جلستك، سجّل دخولك من جديد.');
     }
   }
 
@@ -245,7 +245,18 @@
 
   // ===== التصفح مفتوح للجميع؛ تسجيل الدخول إجباري فقط عند الامتحانات والتنزيل والحصص =====
   let pendingAction = null;
+  // الأساس: نافذة حساب الطالب (رمز واتساب). النموذج القديم بيظهر فقط إذا سيرفر الحسابات مش متاح.
   function openLogin(msg, action){
+    pendingAction = action || null;
+    const A = window.StudentAccount;
+    if (A && A.available === true){ A.openLogin(msg); return; }
+    if (A && A.available === null){
+      A.ready.then(function(ok){ if (ok) A.openLogin(msg); else openLegacyLogin(msg, action); });
+      return;
+    }
+    openLegacyLogin(msg, action);
+  }
+  function openLegacyLogin(msg, action){
     pendingAction = action || null;
     hideLoginError();
     const nt = document.getElementById('loginNote'); nt.textContent = msg || ''; nt.hidden = !msg;
@@ -322,7 +333,11 @@
     loginSubmitBtn.disabled = true;
     loginSubmitBtn.textContent = 'جاري التسجيل...';
 
-    const normalizedPhone = normalizeJoPhone(phoneVal);
+    finishLogin(nameVal, normalizeJoPhone(phoneVal), trackVal, rememberChecked, false);
+  });
+
+  // يكمّل تسجيل الدخول (جلسة الموقع + صف الشيت). بيستخدمه النموذج القديم ونظام الحسابات (viaAccount=true)
+  function finishLogin(nameVal, normalizedPhone, trackVal, rememberChecked, viaAccount){
     const previousPhone = getRemembered('ao_user_phone');
 
     // نحدد إذا هاد "دخول متكرر" لنفس الرقم على نفس الجهاز، عشان تظهر
@@ -338,11 +353,12 @@
     const loginTime = String(Date.now());
     safeStorageSet('ao_acc_chk', loginTime);   // لسا مسجّل هسه: ما منفحص حسابه قبل ما ينكتب صفه بالشيت
     safeStorageSet('ao_login_time', loginTime);
-    setCookie('ao_login_time', loginTime, 7);
+    setCookie('ao_login_time', loginTime, 365);
     // بيانات الطالب طول الجلسة (بنحتاجها لإجابة سؤال البطاقة)
     const sessionUser = JSON.stringify({ name: nameVal, phone: normalizedPhone, track: trackVal });
     safeStorageSet('ao_session_user', sessionUser);
-    setCookie('ao_session_user', sessionUser, 7);
+    setCookie('ao_session_user', sessionUser, 365);
+    if (viaAccount){ safeStorageSet('ao_acct', '1'); setCookie('ao_acct', '1', 365); } else { safeStorageRemove('ao_acct'); deleteCookie('ao_acct'); }
     safeStorageRemove('ao_card_shown');
     deleteCookie('ao_card_shown');
 
@@ -380,7 +396,7 @@
         setTimeout(function(){ sendCardRow({ name: nameVal, phone: normalizedPhone, track: trackVal }, pk); }, 1200);
       }
     }).catch(err => console.warn('تعذر إرسال بيانات تسجيل الدخول للشيت:', err));
-  });
+  }
 
   // ===================== إعدادات ربط Google Sheet =====================
   // رابط Google Apps Script (Web App) اللي بيسجل البيانات بجدول Excel/Google Sheet
@@ -437,6 +453,7 @@
         if (d && d.ok && d.exists === false){
           const msg = 'تم إلغاء حسابك، سجّل دخولك من جديد.';
           wipeStudentLocal();
+          if (window.StudentAccount && window.StudentAccount.reset) window.StudentAccount.reset();
           if (typeof applyVisited === 'function') applyVisited();   // ينشال الأخضر عن كل الكروت
           closeOpenExams();
           lockSite(msg);
@@ -460,6 +477,55 @@
   verifyAccount(false);
   document.addEventListener('visibilitychange', function(){ if (!document.hidden) verifyAccount(false); });
   window.addEventListener('focus', function(){ verifyAccount(false); });
+
+  // ===================== ربط نظام حسابات الطلاب (رمز واتساب) مع جلسة الموقع =====================
+  // الودجت (account-widget.js) هو اللي بيعمل الدخول/الخروج/الحظر. هون بنترجم حالته لجلسة الموقع القديمة
+  // (ao_login_time + ao_session_user) عشان الامتحانات ولوحة الشرف وصفوف الشيت تظل شغّالة زي ما هي.
+  const TRACK_BY_GRADE = { 10: '2011 — الصف العاشر', 11: '2010 — النظام الحالي', 12: '2009 — متقدم' };
+  function acctLocalPhone(p){ p = String(p || ''); return p.indexOf('962') === 0 ? '0' + p.slice(3) : p; }
+  function acctTrack(u){ return u.track || TRACK_BY_GRADE[u.grade] || ''; }
+  function legacyHasAcct(){ return getRemembered('ao_acct') === '1'; }
+
+  function adoptAccount(u, fresh){
+    if (!u || !u.phone) return;
+    const phone = acctLocalPhone(u.phone), track = acctTrack(u);
+    const cur = getSessionUser();
+    const already = isSessionValid() && legacyHasAcct() && cur && cur.phone === phone;
+    if (already && !fresh){
+      // نفس الطالب ومسجّل أصلاً: بنحدّث الاسم/الجيل إذا تغيّروا وبنجدّد المدة (الحساب دائم)
+      if (cur.name !== u.name || cur.track !== track){
+        const su = JSON.stringify({ name: u.name, phone: phone, track: track });
+        safeStorageSet('ao_session_user', su); setCookie('ao_session_user', su, 365);
+      }
+      if (Date.now() - getLoginTime() > 24 * 60 * 60 * 1000){
+        const t = String(Date.now()); safeStorageSet('ao_login_time', t); setCookie('ao_login_time', t, 365);
+      }
+      return;
+    }
+    finishLogin(u.name, phone, track, true, true);
+  }
+
+  function clearAccountSession(msg){
+    lockSite('');
+    safeStorageRemove('ao_acct'); deleteCookie('ao_acct');
+    if (typeof applyVisited === 'function') applyVisited();
+    closeOpenExams();
+    if (msg) openLogin(msg);
+  }
+
+  window.addEventListener('student:login',   function(e){ adoptAccount(e.detail, true); });
+  window.addEventListener('student:restore', function(e){ adoptAccount(e.detail, false); });
+  window.addEventListener('student:update',  function(e){ adoptAccount(e.detail, false); });
+  window.addEventListener('student:logout',  function(){ clearAccountSession(''); });
+  window.addEventListener('student:loginclose', function(){ pendingAction = null; });
+  window.addEventListener('student:ready', function(e){
+    const d = e.detail || {};
+    // السيرفر شغّال وما في حساب مسجّل: أي جلسة موقع قديمة لازم تنقفل (الدخول صار بتحقق واتساب فقط).
+    // لو كان الحساب نفسه انحظر أو انسجّل خروجه من جهاز ثاني، بنعرض رسالة.
+    if (d.available && !d.user && (isSessionValid() || getRemembered('ao_login_time'))){
+      clearAccountSession(legacyHasAcct() ? 'تم إنهاء جلستك، سجّل دخولك من جديد.' : '');
+    }
+  });
 
   // ===================== تحقق من رقم الجوال الأردني =====================
   function normalizeJoPhone(v){
