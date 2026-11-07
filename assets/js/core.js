@@ -402,7 +402,22 @@
   // رابط Google Apps Script (Web App) اللي بيسجل البيانات بجدول Excel/Google Sheet
   const SHEET_ENDPOINT = "https://script.google.com/macros/s/AKfycbyJlWWWHWFRdZezcH2MWtttxhcF3c1nrD8iWpAbAxJkV7I9RPKvqUVvndP3OzqXDTQ/exec";
 
+  // نسخة موازية للوحة الإدارة (حساب الطالب): امتحانات وتنزيلات. ما بتأثر على الشيت أبدًا، وأي خطأ بيتجاهل.
+  function mirrorToAccount(data){
+    try{
+      const A = window.StudentAccount;
+      if (!A || typeof A.track !== 'function' || !data) return;
+      if (data['المصدر'] === 'امتحان إلكتروني' && data['الحالة'] === 'أنهى الامتحان'){
+        const m = /(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/.exec(String(data['العلامة'] || ''));
+        if (m) A.track('exam', { ref: data['الرسالة'], label: data['الرسالة'], score: +m[1], max: +m[2] });
+      } else if (data['المصدر'] === 'ملف' && data['الحالة'] === 'تحميل'){
+        A.track('download', { ref: data['الرسالة'], label: data['الرسالة'] });
+      }
+    } catch(e){}
+  }
+
   function sendToSheet(data){
+    mirrorToAccount(data);
     try{
       // no-cors: ما بنقدر نقرأ الرد، بس الطلب بيوصل للسكربت وبيسجل الصف بالشيت
       return fetch(SHEET_ENDPOINT, {

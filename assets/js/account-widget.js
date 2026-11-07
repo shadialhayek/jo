@@ -21,7 +21,14 @@
  *   student:update   الطالب عدّل بياناته أو صورته
  *   student:ready    انتهى الفحص الأول (detail = { user, available })
  *   student:loginclose  الطالب سكّر نافذة الدخول بدون ما يسجّل
- * كائن عام: window.StudentAccount = { getUser, openLogin(msg), logout, available, ready }
+ * كائن عام: window.StudentAccount = { getUser, openLogin(msg), logout, available, ready, track }
+ *
+ * تتبع النشاط (بيشتغل تلقائياً لما الطالب يكون مسجّل دخول):
+ *   - مدة وجوده الفعلية على الموقع (نبضة كل 30 ثانية طالما الصفحة مفتوحة وهو بيتفاعل)
+ *   - الصفحات اللي بيزورها
+ *   - تنزيل الملفات (روابط PDF/Word/PowerPoint/Excel/ZIP أو أي رابط عليه download أو data-track="download")
+ *   - الامتحانات: الصفحة بتستدعي هالسطر لما الطالب يخلّص:
+ *       window.StudentAccount.track('exam', { ref: 'امتحان الوحدة الأولى', score: 17, max: 20 });
  */
 (() => {
   if (window.StudentAccount) return;
@@ -74,9 +81,9 @@
   }
   const levelText = (u) => (TRACKS ? u.track || u.gradeLabel : u.gradeLabel) || '';
 
-  async function call(method, url, body, raw) {
+  async function call(method, url, body, raw, extra) {
     const headers = {};
-    const opts = { method, headers, credentials: TOKEN_MODE ? 'omit' : 'include' };
+    const opts = { method, headers, credentials: TOKEN_MODE ? 'omit' : 'include', ...extra };
     const t = TOKEN_MODE ? tokenGet() : null;
     if (t) headers.Authorization = 'Bearer ' + t;
     if (raw) {
@@ -453,8 +460,68 @@
     if (e.key === 'Escape' && modal) closeModal();
   });
 
+  // ---------- تتبع النشاط ----------
+  // أي خطأ هون بيتجاهل بصمت: التتبع ما لازم يعطّل الموقع أبداً.
+  const fire = (url, body) => {
+    if (!user) return;
+    call('POST', url, body, undefined, { keepalive: true }).catch(() => {});
+  };
+  function track(type, d = {}) {
+    if (!user) return;
+    fire('/api/me/track', { type, ref: d.ref, label: d.label, score: d.score, max: d.max });
+  }
+
+  const DL_EXT = /\.(pdf|docx?|pptx?|xlsx?|zip|rar|7z)$/i;
+  document.addEventListener(
+    'click',
+    (e) => {
+      try {
+        const a = e.target.closest && e.target.closest('a[href]');
+        if (!a || !user) return;
+        const u = new URL(a.getAttribute('href'), location.href);
+        const file = decodeURIComponent(u.pathname.split('/').pop() || '');
+        const flagged = a.hasAttribute('download') || a.dataset.track === 'download';
+        if (!flagged && !DL_EXT.test(u.pathname)) return;
+        const label = (a.dataset.trackLabel || a.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 100);
+        track('download', { ref: file || u.hostname, label });
+      } catch {}
+    },
+    true,
+  );
+
+  let lastInput = Date.now();
+  let beatTimer = null;
+  const touch = () => { lastInput = Date.now(); };
+  ['pointerdown', 'keydown', 'scroll', 'touchstart', 'mousemove'].forEach((ev) => window.addEventListener(ev, touch, { passive: true, capture: true }));
+  const beat = () => {
+    if (!user || document.visibilityState !== 'visible' || Date.now() - lastInput > 60000) return;
+    fire('/api/me/ping', {});
+  };
+  function startTracking() {
+    if (!beatTimer) beatTimer = setInterval(beat, 30000);
+    try {
+      const key = 'sa_pv:' + location.pathname;
+      const last = Number(sessionStorage.getItem(key) || 0);
+      if (Date.now() - last > 20 * 60000) {
+        sessionStorage.setItem(key, String(Date.now()));
+        track('page', { ref: location.pathname, label: document.title });
+      }
+    } catch {
+      track('page', { ref: location.pathname, label: document.title });
+    }
+    beat();
+  }
+  function stopTracking() {
+    clearInterval(beatTimer);
+    beatTimer = null;
+  }
+  window.addEventListener('student:login', startTracking);
+  window.addEventListener('student:restore', startTracking);
+  window.addEventListener('student:logout', stopTracking);
+
   window.StudentAccount = {
     getUser: () => user,
+    track,
     openLogin,
     logout: acts.logout,
     // تصفير محلي (بيستخدمه الموقع لما الأستاذ يلغي الحساب من الشيت): بيمسح التوكن وبيرجّع الزر لـ"تسجيل الدخول"
