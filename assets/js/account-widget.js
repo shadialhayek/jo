@@ -548,6 +548,7 @@
       try {
         const a = e.target.closest && e.target.closest('a[href]');
         if (!a || !user) return;
+        if (a.hasAttribute('data-no-track')) return;   // الموقع بيسجّل هالتنزيل لحاله (أوراق العمل ونتائج الامتحانات)
         const u = new URL(a.getAttribute('href'), location.href);
         const file = decodeURIComponent(u.pathname.split('/').pop() || '');
         const flagged = a.hasAttribute('download') || a.dataset.track === 'download';

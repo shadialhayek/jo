@@ -942,6 +942,7 @@
     }
     const a = document.createElement('a');
     a.href = url; a.download = fileName; a.rel = 'noopener'; a.style.display = 'none';
+    a.setAttribute('data-no-track', '1');   // التسجيل بيصير بـwsLog (اسم الملف الحقيقي)، مش من تتبع الروابط العام
     document.body.appendChild(a); a.click();
     setTimeout(function(){ a.remove(); URL.revokeObjectURL(url); }, 60000);
   }
@@ -949,11 +950,12 @@
 
   let wsExam = null;   // نتيجة امتحان مفتوحة بالمعاينة: {bytes, file, urls}
   function wsDownload(id){
-    if (!id && wsExam){ saveFileToDevice(wsExam.bytes, wsExam.file); return; }
+    if (!id && wsExam){ saveFileToDevice(wsExam.bytes, wsExam.file); wsLog('تحميل', 'نتيجة امتحان — ' + (wsExam.title || wsExam.file || '')); return; }
     id = id || wsCur; const d = wsData(id); if (!d) return;
     // الملف صار ملف PDF حقيقي على السيرفر: تنزيل مباشر من نفس ضغطة المستخدم (بدون انتظار)
     const a = document.createElement('a');
     a.href = d.pdf; a.download = /\.pdf$/i.test(d.file) ? d.file : d.file + '.pdf'; a.rel = 'noopener'; a.style.display = 'none';
+    a.setAttribute('data-no-track', '1');   // نفس الضغطة بتتسجّل مرة وحدة عبر wsLog
     document.body.appendChild(a); a.click();
     setTimeout(function(){ a.remove(); }, 1000);
     wsLog('تحميل', d.name);
@@ -972,7 +974,7 @@
   }
   // معاينة نتيجة امتحان (صفحات) مع زر تنزيل — بتنفتح بعد ما يجهز الـPDF
   function wsShowExam(title, urls, bytes, file){
-    wsCur = null; wsExam = { bytes: bytes, file: file, urls: urls };
+    wsCur = null; wsExam = { bytes: bytes, file: file, urls: urls, title: title };
     document.getElementById('wsTitle').textContent = title;
     const body = document.getElementById('wsBody');
     body.innerHTML = '';
