@@ -400,24 +400,40 @@
 
   // ===================== إعدادات ربط Google Sheet =====================
   // رابط Google Apps Script (Web App) اللي بيسجل البيانات بجدول Excel/Google Sheet
+  const SHEET_ENABLED = false;   // true = رجّع الإرسال للشيت القديم بالتوازي (للطوارئ فقط)
   const SHEET_ENDPOINT = "https://script.google.com/macros/s/AKfycbyJlWWWHWFRdZezcH2MWtttxhcF3c1nrD8iWpAbAxJkV7I9RPKvqUVvndP3OzqXDTQ/exec";
 
   // نسخة موازية للوحة الإدارة (حساب الطالب): امتحانات وتنزيلات. ما بتأثر على الشيت أبدًا، وأي خطأ بيتجاهل.
+  // السيرفر (لوحة الأدمن) هو المرجع الوحيد: امتحانات، ملفات، بطاقة، رسائل التواصل. (تسجيل الدخول بيسجّله السيرفر لحاله)
   function mirrorToAccount(data){
     try{
       const A = window.StudentAccount;
-      if (!A || typeof A.track !== 'function' || !data) return;
-      if (data['المصدر'] === 'امتحان إلكتروني' && data['الحالة'] === 'أنهى الامتحان'){
+      if (!A || typeof A.call !== 'function' || !data) return;
+      const src = data['المصدر'], st = data['الحالة'], msg = data['الرسالة'];
+      if (src === 'امتحان إلكتروني' && st === 'أنهى الامتحان'){
         const m = /(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/.exec(String(data['العلامة'] || ''));
-        if (m) A.track('exam', { ref: data['الرسالة'], label: data['الرسالة'], score: +m[1], max: +m[2] });
-      } else if (data['المصدر'] === 'ملف' && data['الحالة'] === 'تحميل'){
-        A.track('download', { ref: data['الرسالة'], label: data['الرسالة'] });
+        if (!m) return;
+        const la = window.__lastExamAnswers;
+        const body = { exam: msg, score: +m[1], max: +m[2], answers: (la && la.sheet === msg) ? la.a : undefined };
+        // أول محاولة بتنحسب فقط (السيرفر بيرفض الإعادة). إذا فشل الاتصال بنعيد المحاولة مرة.
+        A.call('POST', '/api/me/exam-attempt', body).catch(function(e){
+          if (e && e.status === 409) return;
+          setTimeout(function(){ A.call('POST', '/api/me/exam-attempt', body).catch(function(){}); }, 4000);
+        });
+      } else if (src === 'ملف' && (st === 'تحميل' || st === 'عرض')){
+        A.call('POST', '/api/me/file', { file: msg, kind: st === 'تحميل' ? 'download' : 'view' }).catch(function(){});
+      } else if (src === 'بطاقة الأستاذ'){
+        A.call('POST', '/api/me/card', { answer: st }).catch(function(){});
+      } else if (src === 'نموذج التواصل'){
+        if (A.getUser && A.getUser()) A.call('POST', '/api/me/message', { text: msg }).catch(function(){});
+        else A.call('POST', '/api/contact', { name: data['الاسم'], phone: data['الجوال'], track: data['الجيل/الفرع'], text: msg }).catch(function(){});
       }
     } catch(e){}
   }
 
   function sendToSheet(data){
     mirrorToAccount(data);
+    if (!SHEET_ENABLED) return Promise.resolve();   // الشيت متوقف: كل شي صار بالسيرفر
     try{
       // no-cors: ما بنقدر نقرأ الرد، بس الطلب بيوصل للسكربت وبيسجل الصف بالشيت
       return fetch(SHEET_ENDPOINT, {
@@ -459,12 +475,12 @@
     const last = parseInt(safeStorageGet('ao_acc_chk'), 10) || 0;
     if (!force && Date.now() - last < ACCOUNT_CHECK_EVERY_MS) return Promise.resolve(true);
 
-    const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-    const timer = setTimeout(function(){ if (ctrl) ctrl.abort(); }, 8000);
-    accCheckBusy = fetch(SHEET_ENDPOINT + '?action=check&phone=' + encodeURIComponent(u.phone) + '&_=' + Date.now(), ctrl ? { signal: ctrl.signal } : {})
-      .then(function(r){ return r.json(); })
+    const A = window.StudentAccount;
+    if (!A || typeof A.call !== 'function') return Promise.resolve(true);
+    // السيرفر هو المرجع: إذا ما عاد في جلسة صالحة للحساب (انحذف أو انحظر) بنرجّعه لتسجيل الدخول
+    accCheckBusy = A.call('GET', '/api/me')
+      .then(function(d){ return d ? { ok: true, exists: !!d.user } : null; })
       .then(function(d){
-        clearTimeout(timer);
         if (d && d.ok && d.exists === false){
           const msg = 'تم إلغاء حسابك، سجّل دخولك من جديد.';
           wipeStudentLocal();
@@ -478,7 +494,7 @@
         if (d && d.ok) safeStorageSet('ao_acc_chk', String(Date.now()));
         return true;
       })
-      .catch(function(){ clearTimeout(timer); return true; })
+      .catch(function(){ return true; })
       .then(function(ok){ accCheckBusy = null; return ok; });
     return accCheckBusy;
   }

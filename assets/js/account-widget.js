@@ -147,6 +147,15 @@
     .chip span.nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; color: #0f172a; }
     .av { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; background: #dbeafe; color: #1d4ed8; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; flex: none; }
     .av.big { width: 72px; height: 72px; font-size: 28px; }
+    .pf { max-width: 460px; max-height: 88vh; overflow: auto; text-align: right; }
+    .pf-top { display: flex; gap: 12px; align-items: center; }
+    .pf-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0; text-align: center; }
+    .pf-kpis div { background: #f1f5f9; border-radius: 12px; padding: 10px 4px; }
+    .pf-kpis b { display: block; font-size: 20px; } .pf-kpis span { font-size: 12px; color: #64748b; }
+    .pf h3 { margin: 14px 0 6px; font-size: 15px; }
+    .pf-list { list-style: none; margin: 0; padding: 0; font-size: 13.5px; }
+    .pf-list li { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid #e2e8f0; }
+    .pf-list li span { flex: 1; word-break: break-word; }
     .menu { position: absolute; top: calc(100% + 8px); ${corner}: 0; width: 280px; background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 18px; box-shadow: 0 12px 32px rgba(15,23,42,.18); text-align: center; z-index: 5; color: #0f172a; }
     .menu .nm { font-size: 17px; font-weight: 700; margin-top: 10px; word-break: break-word; }
     .menu .meta { color: #64748b; font-size: 13.5px; margin-top: 4px; }
@@ -234,6 +243,22 @@
         <div class="row"><button class="btn primary" type="submit">تأكيد</button></div>
         <div class="between"><button class="link" type="button" data-act="resend" disabled>إعادة الإرسال</button><button class="link" type="button" data-act="changePhone">تغيير الرقم</button></div>
       </form></div>`;
+    if (modal.step === 'myprofile') return profileHtml();
+    if (modal.step === 'newphone')
+      return `<div class="overlay" data-act="overlay"><form class="card" data-form="newphone" novalidate>
+        <h2>تغيير رقم الهاتف</h2><p>اكتب الرقم الجديد وبنبعتله رمز تأكيد على واتساب. حسابك ونتائجك بتضل كما هي.</p>
+        <input name="phone" class="ltr" type="tel" inputmode="tel" placeholder="07XXXXXXXX" required>
+        <div class="err"></div>
+        <div class="row"><button class="btn primary" type="submit">إرسال الرمز</button><button class="btn" type="button" data-act="close">إلغاء</button></div>
+      </form></div>`;
+    if (modal.step === 'newphonecode')
+      return `<div class="overlay" data-act="overlay"><form class="card" data-form="newphonecode" novalidate>
+        <h2>أدخل الرمز</h2><p>بعتنا رمز على واتساب للرقم <span dir="ltr">+${esc(modal.phone)}</span></p>
+        <input name="code" class="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••" required>
+        ${modal.devCode ? `<div class="hint">وضع تجريبي — الرمز: ${esc(modal.devCode)}</div>` : ''}
+        <div class="err"></div>
+        <div class="row"><button class="btn primary" type="submit">تأكيد</button><button class="btn" type="button" data-act="close">إلغاء</button></div>
+      </form></div>`;
     return `<div class="overlay"><form class="card" data-form="profile" novalidate>
         <h2>حساب جديد</h2><p>خطوة أخيرة: اكتب اسمك الكامل واختر ${TRACKS ? 'جيلك وفرعك' : 'صفك'}.</p>
         <label for="name">الاسم الكامل</label><input id="name" name="name" maxlength="50" autocomplete="name" required>
@@ -241,6 +266,25 @@
         <div class="err"></div>
         <div class="row"><button class="btn primary" type="submit">إنشاء الحساب</button></div>
       </form></div>`;
+  }
+
+  const fmtD = (ms) => { try { return new Date(ms).toLocaleDateString('ar-JO-u-nu-latn'); } catch { return ''; } };
+  function profileHtml() {
+    const d = modal.data;
+    const body = !d
+      ? `<p>${modal.error ? esc(modal.error) : 'جاري التحميل…'}</p>`
+      : `<div class="pf-top">${avatar(user, true)}<div><div class="nm">${esc(user.name)}</div><div class="meta">${esc(levelText(user))}</div><div class="meta phone">+${esc(user.phone)}</div></div></div>
+         <div class="pf-kpis">
+           <div><b>${d.stats.average == null ? '—' : esc(d.stats.average) + '%'}</b><span>معدلي العام</span></div>
+           <div><b>${esc(d.stats.examsCount)}</b><span>امتحانات</span></div>
+           <div><b>${esc(d.stats.filesCount)}</b><span>ملفات</span></div>
+         </div>
+         ${d.stats.inHonor ? '<div class="hint" style="background:#fef3c7;color:#92400e">🏅 أنت في لوحة الشرف</div>' : d.stats.average != null ? `<div class="hint">لوحة الشرف لمعدل ${esc(d.stats.honorMin)}% فأكثر</div>` : ''}
+         <h3>امتحاناتي</h3>
+         ${d.exams.length ? '<ul class="pf-list">' + d.exams.map((e) => `<li><span>${esc(e.name)}</span><b dir="ltr">${esc(e.score)}/${esc(e.max)} (${esc(e.percent)}%)</b></li>`).join('') + '</ul>' : '<p class="meta">ما قدّمت أي امتحان بعد.</p>'}
+         <h3>ملفاتي</h3>
+         ${d.files.length ? '<ul class="pf-list">' + d.files.map((f) => `<li><span>${esc(f.file)}</span><b>${esc(f.downloads)} تحميل</b></li>`).join('') + '</ul>' : '<p class="meta">ما فتحت أي ملف بعد.</p>'}`;
+    return `<div class="overlay" data-act="overlay"><div class="card pf" role="dialog" aria-label="ملفي">${body}<div class="row" style="margin-top:14px"><button class="btn" type="button" data-act="close">إغلاق</button></div></div></div>`;
   }
 
   function menuHtml() {
@@ -260,7 +304,9 @@
       <div class="row">
         <label class="btn" style="margin:0;font-weight:400;cursor:pointer">${user.photo ? 'تغيير الصورة' : 'إضافة صورة'}<input type="file" accept="image/*"></label>
         ${user.photo ? '<button class="btn" data-act="removePhoto">حذف الصورة</button>' : ''}
+        <button class="btn primary" data-act="openProfile">ملفي ونتائجي</button>
         <button class="btn" data-act="edit">تعديل الاسم والجيل</button>
+        <button class="btn" data-act="changeMyPhone">تغيير رقم الهاتف</button>
         <button class="btn danger" data-act="logout">تسجيل الخروج</button>
       </div></div>`;
   }
@@ -317,6 +363,22 @@
   }
 
   const forms = {
+    async newphone(f) {
+      showErr('');
+      try {
+        const phone = f.elements.phone.value.trim();
+        const d = await call('POST', '/api/me/phone/request-code', { phone });
+        modal = { step: 'newphonecode', phone: d.phone, devCode: d.devCode };
+        render();
+      } catch (e) { showErr(e.message); }
+    },
+    async newphonecode(f) {
+      showErr('');
+      try {
+        const d = await call('POST', '/api/me/phone/verify', { phone: modal.phone, code: f.elements.code.value.trim() });
+        user = d.user; modal = null; render(); emit('student:update', user);
+      } catch (e) { showErr(e.message); }
+    },
     async phone(f) {
       const phone = f.phone.value.trim();
       if (!phone) return showErr('اكتب رقم الهاتف');
@@ -399,6 +461,14 @@
       el.disabled = true;
       try { await sendCode(); } catch (e) { showErr(e.message); startCountdown(10); }
     },
+    async openProfile() {
+      menuOpen = false;
+      modal = { step: 'myprofile', data: null };
+      render();
+      try { const d = await call('GET', '/api/me/summary'); if (modal && modal.step === 'myprofile') { modal.data = d; user = d.user || user; render(); } }
+      catch (e) { if (modal && modal.step === 'myprofile') { modal.error = e.message; render(); } }
+    },
+    changeMyPhone() { menuOpen = false; modal = { step: 'newphone' }; render(); },
     toggleMenu() { menuOpen = !menuOpen; editing = false; render(); },
     edit() { editing = true; render(); },
     cancelEdit() { editing = false; render(); },
@@ -468,7 +538,7 @@
   };
   function track(type, d = {}) {
     if (!user) return;
-    fire('/api/me/track', { type, ref: d.ref, label: d.label, score: d.score, max: d.max });
+    fire('/api/me/track', { type, ref: d.ref, label: d.label, score: d.score, max: d.max, answers: d.answers });
   }
 
   const DL_EXT = /\.(pdf|docx?|pptx?|xlsx?|zip|rar|7z)$/i;
@@ -522,6 +592,7 @@
   window.StudentAccount = {
     getUser: () => user,
     track,
+    call,   // للموقع: طلبات موثّقة للسيرفر (امتحانات، ملفات، تواصل)
     openLogin,
     logout: acts.logout,
     // تصفير محلي (بيستخدمه الموقع لما الأستاذ يلغي الحساب من الشيت): بيمسح التوكن وبيرجّع الزر لـ"تسجيل الدخول"

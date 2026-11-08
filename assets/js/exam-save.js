@@ -16,6 +16,7 @@
     const a = []; for (let i = 0; i < n; i++) a.push(ans[i] || '');
     const k = examSaveKey(id), v = JSON.stringify({ a: a, t: Date.now() });
     safeStorageSet(k, v); setCookie(k, v, 730);
+    try { window.__lastExamAnswers = { sheet: examSheetNames()[id], a: a }; } catch(e){}
   }
   // للمعلّم فقط (للتجربة): افتح الموقع برابط فيه ?resetexams=1 وبتتصفّر محاولات هذا الجهاز
   try {
@@ -55,42 +56,51 @@
     } catch(e){}
   }
 
-  // بترجّع Promise<[ids الامتحانات اللي انمسحت محاولتها]> وما بتفشل أبدًا
+  // ===== السيرفر هو المرجع (بدل الشيت) =====
+  // examServerMap: اسم الامتحان المطبّع -> محاولة الطالب المسجّلة عند السيرفر (بتتحمّل بالخلفية)
+  let examServerMap = null;
+  function examServerAttempt(id){
+    if (!examServerMap) return null;
+    try { return examServerMap[examNorm(examSheetNames()[id])] || null; } catch(e){ return null; }
+  }
+  function examWriteSaved(id, a){
+    const k = examSaveKey(id), v = JSON.stringify({ a: a, t: Date.now() - EXAM_SYNC_GRACE_MS - 1000 });
+    safeStorageSet(k, v); setCookie(k, v, 730);
+  }
+
+  // بترجّع Promise<[ids الامتحانات اللي الأستاذ أعاد فتحها]> وما بتفشل أبدًا
   function examSyncSaved(force){
     const u = getSessionUser();
-    if (!u || !u.phone) return Promise.resolve([]);
+    const A = window.StudentAccount;
+    if (!u || !u.phone || !A || typeof A.call !== 'function') return Promise.resolve([]);
     if (examSyncBusy) return examSyncBusy;
     if (!force && Date.now() - examSyncAt < EXAM_SYNC_TTL_MS) return Promise.resolve([]);
-    const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-    const timer = setTimeout(function(){ if (ctrl) ctrl.abort(); }, 8000);
-    examSyncBusy = fetch(SHEET_ENDPOINT + '?action=done&phone=' + encodeURIComponent(u.phone) + '&_=' + Date.now(), ctrl ? { signal: ctrl.signal } : {})
-      .then(function(r){ return r.json(); })
+    examSyncBusy = A.call('GET', '/api/me/exams')
       .then(function(d){
-        clearTimeout(timer);
         const cleared = [];
-        if (!d || !d.ok || !Array.isArray(d.exams)) return cleared;
+        if (!d || !d.ok || !Array.isArray(d.attempts)) return cleared;
         examSyncAt = Date.now();
-        const done = {}; d.exams.forEach(function(n){ done[examNorm(n)] = true; });
-        examDoneMap = done;
+        const done = {}, map = {};
+        d.attempts.forEach(function(x){ const k = examNorm(x.name); done[k] = true; map[k] = x; });
+        examDoneMap = done; examServerMap = map;
         const names = examSheetNames();
         Object.keys(names).forEach(function(id){
           const sv = examGetSaved(id);
           if (!sv) return;
-          if (sv.t && Date.now() - sv.t < EXAM_SYNC_GRACE_MS) return;
+          if (sv.t && Date.now() - sv.t < EXAM_SYNC_GRACE_MS) return;   // لسا انسلّم من دقايق
           if (done[examNorm(names[id])]) return;
-          const k = examSaveKey(id); safeStorageRemove(k); deleteCookie(k);
+          const k = examSaveKey(id); safeStorageRemove(k); deleteCookie(k);   // الأستاذ أعاد فتحه
           cleared.push(id);
         });
         examReconcileCards();
         return cleared;
       })
-      .catch(function(){ clearTimeout(timer); return []; })
+      .catch(function(){ return []; })
       .then(function(cleared){ examSyncBusy = null; return cleared; });
     return examSyncBusy;
   }
 
   (function(){
-    // لكل دالة فتح: معرّف الامتحان + العنصر اللي بيظهر لما يكون مفتوح
     const OPENERS = {
       exOpen:        { id: function(a){ return a[0]; },  el: function(a){ return 'ex-' + a[0]; } },
       openPwExam:    { id: function(){ return 'piecewise'; }, el: function(){ return 'pwExam'; } },
@@ -98,30 +108,42 @@
     };
     function init(){
       const fns = Object.keys(OPENERS);
-      if (!fns.some(function(f){ return typeof window[f] === 'function'; })) return;   // صفحات بدون امتحانات
+      if (!fns.some(function(f){ return typeof window[f] === 'function'; })) return;
       fns.forEach(function(f){
         const orig = window[f];
         if (typeof orig !== 'function') return;
         window[f] = function(){
-          const self = this, args = arguments, o = OPENERS[f];
-          const r = orig.apply(self, args);                       // 1) بنفتح الامتحان فورًا
-          setTimeout(examReconcileCards, 0);                      //    ولون الكرت حسب آخر رد من الشيت
-          // 2) بالخلفية: فحص الشيت + فحص الحساب (إذا انتهى الكاش فقط)
-          examSyncSaved(false).then(function(cleared){
-            const id = o.id(args), el = document.getElementById(o.el(args));
-            if (cleared.indexOf(id) !== -1 && el && !el.hidden) orig.apply(self, args);   // المحاولة انحذفت: نعيد فتحه جديد
-          });
-          try { if (typeof verifyAccount === 'function') verifyAccount(false); } catch(e){}
-          return r;
+          const self = this, args = arguments, o = OPENERS[f], id = o.id(args);
+          function open(){
+            // محاولة وحدة: إذا السيرفر مسجّل تسليم الطالب وما عنده نسخة محلية (جهاز جديد) بنرجّعله نتيجته ما بنفتح الامتحان من جديد
+            const sa = examServerAttempt(id);
+            if (sa && !examGetSaved(id)){
+              if (Array.isArray(sa.answers) && sa.answers.length){ examWriteSaved(id, sa.answers); }
+              else {
+                alert('سلّمت هذا الامتحان من قبل (علامتك ' + sa.score + ' / ' + sa.max + '). كل امتحان بينعمل مرة وحدة. إذا بدك تعيده تواصل مع الأستاذ.');
+                return;
+              }
+            }
+            const r = orig.apply(self, args);
+            setTimeout(examReconcileCards, 0);
+            examSyncSaved(false).then(function(cleared){
+              const el = document.getElementById(o.el(args));
+              if (cleared.indexOf(id) !== -1 && el && !el.hidden) orig.apply(self, args);   // الأستاذ أعاد فتحه: بنعيد فتحه جديد
+            });
+            try { if (typeof verifyAccount === 'function') verifyAccount(false); } catch(e){}
+            return r;
+          }
+          // أول مرة بالجلسة: بننتظر رد السيرفر (أجزاء من الثانية) قبل ما نقرر
+          if (!examServerMap && getSessionUser()) return examSyncSaved(true).then(open);
+          return open();
         };
       });
-      // بعد تسليم أي امتحان: الكرت بيصير أخضر فورًا (المحاولة انحفظت محليًا والشيت بيتسجل بالخلفية)
       ['exSubmit', 'submitPwExam', 'submitAngleExam'].forEach(function(f){
         const orig = window[f];
         if (typeof orig !== 'function') return;
         window[f] = function(){ const r = orig.apply(this, arguments); setTimeout(examReconcileCards, 0); return r; };
       });
-      examSyncSaved(true);   // تسخين مبكر: لما الطالب يضغط على الامتحان يكون الفحص جاهز
+      examSyncSaved(true);   // تسخين مبكر
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
   })();

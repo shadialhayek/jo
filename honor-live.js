@@ -1,8 +1,8 @@
 // ===== لوحة الشرف الحية =====
-// بتجيب من الشيت الطلاب اللي معدلهم العام (متوسط كل امتحاناتهم) 75% فأكثر،
+// بتجيب من السيرفر (لوحة الأدمن) الطلاب اللي معدلهم العام (متوسط كل امتحاناتهم) 75% فأكثر،
 // وبتستبدل القائمة تلقائياً. إذا فشل الاتصال بتضل القائمة القديمة ظاهرة.
 (function(){
-  var ENDPOINT = 'https://script.google.com/macros/s/AKfycbyJlWWWHWFRdZezcH2MWtttxhcF3c1nrD8iWpAbAxJkV7I9RPKvqUVvndP3OzqXDTQ/exec';
+  var API = (window.StudentAccountConfig && window.StudentAccountConfig.api) || 'https://162-35-38-7.sslip.io';
   var body = document.getElementById('rankingBody');
   if (!body) return;
 
@@ -25,7 +25,7 @@
 
   var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
   var timer = setTimeout(function(){ if (ctrl) ctrl.abort(); }, 12000);
-  fetch(ENDPOINT + '?action=honor&_=' + Date.now(), ctrl ? { signal: ctrl.signal } : {})
+  fetch(API + '/api/honor', ctrl ? { signal: ctrl.signal } : {})
     .then(function(r){ return r.json(); })
     .then(function(d){
       clearTimeout(timer);
