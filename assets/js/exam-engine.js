@@ -45,6 +45,8 @@
     }
     let score = 0;
     for (let i = 0; i < n; i++) if (ex.ans[i] === ex.key[i]) score += 1;
+    const ns = replay ? examGetSaved(id) : null, noAns = !!(ns && ns.ns);   // تسليم مسجّل عند السيرفر بدون إجابات
+    if (noAns) score = ns.sc;
     if (!replay) try {
       examSetSaved(id, ex.ans, n);
       const u = getSessionUser() || {};
@@ -63,7 +65,7 @@
     const pct = score / n;
     d.querySelector('.ex-note').textContent = pct >= 0.8 ? 'ممتاز، أحسنت!' : pct >= 0.5 ? 'جيد، راجع الأسئلة التي أخطأت فيها.' : 'راجع الدرس وإجاباتك أدناه.';
     const rv = d.querySelector('.ex-review');
-    rv.innerHTML = '<h3>مراجعة إجاباتك</h3><p style="margin:6px 0 14px;opacity:.85">تم تسليم هذا الامتحان — محاولة واحدة فقط، ولا يمكن إعادته.</p>';
+    rv.innerHTML = '<h3>مراجعة إجاباتك</h3><p style="margin:6px 0 14px;opacity:.85">تم تسليم هذا الامتحان — محاولة واحدة فقط، ولا يمكن إعادته.' + (noAns ? ' (إجاباتك ما انحفظت على هذا الجهاز، بنعرض لك علامتك والإجابات الصحيحة.)' : '') + '</p>';
     const clone = d.querySelector('.ex-questions').cloneNode(true);
     clone.classList.remove('ex-questions');
     clone.querySelectorAll('.qx-opt').forEach(function(b){ b.classList.remove('sel'); b.disabled = true; });
@@ -71,10 +73,13 @@
       const key = ex.key[i], mine = ex.ans[i];
       qEl.querySelectorAll('.qx-opt').forEach(function(b){
         if (b.dataset.o === key) b.classList.add('ok');
-        else if (b.dataset.o === mine) b.classList.add('bad');
+        else if (!noAns && b.dataset.o === mine) b.classList.add('bad');
       });
       const fb = document.createElement('div');
-      if (mine === key){
+      if (noAns){
+        fb.className = 'qx-fb ok';
+        fb.innerHTML = 'الإجابة الصحيحة: <bdi dir="ltr">' + key + '</bdi>';
+      } else if (mine === key){
         fb.className = 'qx-fb ok';
         fb.textContent = '✓ إجابتك صحيحة (' + key + ')';
       } else {

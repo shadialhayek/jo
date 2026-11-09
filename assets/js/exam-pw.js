@@ -40,6 +40,8 @@
     }
     let score = 0;
     for (let i = 0; i < PW_KEY.length; i++) if (pwAns[i] === PW_KEY[i]) score += 1;
+    const ns = replay ? examGetSaved('piecewise') : null, noAns = !!(ns && ns.ns);
+    if (noAns) score = ns.sc;
     if (!replay) try {
       examSetSaved('piecewise', pwAns, PW_KEY.length);
       const u = getSessionUser() || {};
@@ -68,10 +70,13 @@
         const key = PW_KEY[i], mine = pwAns[i];
         qEl.querySelectorAll('.qx-opt').forEach(function(b){
           if (b.dataset.o === key) b.classList.add('ok');
-          else if (b.dataset.o === mine) b.classList.add('bad');
+          else if (!noAns && b.dataset.o === mine) b.classList.add('bad');
         });
         const fb = document.createElement('div');
-        if (mine === key){
+        if (noAns){
+          fb.className = 'qx-fb ok';
+          fb.innerHTML = 'الإجابة الصحيحة: <bdi dir="ltr">' + key + '</bdi>';
+        } else if (mine === key){
           fb.className = 'qx-fb ok';
           fb.textContent = '✓ إجابتك صحيحة (' + key + ')';
         } else {

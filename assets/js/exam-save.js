@@ -30,7 +30,7 @@
   // مهم: الفحص هذا بيصير بالخلفية. الامتحان بينفتح فورًا من بيانات الجهاز (0 ثانية انتظار)،
   // وإذا الشيت ردّ بعدين إن المحاولة انحذفت، بنمسحها وبنعيد فتح الامتحان "جديد" لحاله.
   // (قبل كده كان الامتحان بيستنى رد سكربت جوجل 3-4 ثواني قبل ما ينفتح.)
-  const EXAM_SYNC_GRACE_MS = 3 * 60 * 1000;   // امتحان انسلّم من أقل من 3 دقايق ما منلمسه (لسا بينكتب بالشيت)
+  const EXAM_SYNC_GRACE_MS = 60 * 1000;       // امتحان انسلّم من أقل من دقيقة ما منلمسه (لسا بيوصل للسيرفر)
   const EXAM_SYNC_TTL_MS   = 60 * 1000;       // نتيجة الفحص بتضل صالحة دقيقة، وما منكرره أسرع من هيك
   let examSyncAt = 0, examSyncBusy = null, examDoneMap = null;
 
@@ -68,6 +68,11 @@
     safeStorageSet(k, v); setCookie(k, v, 730);
   }
 
+  function examMirrorServer(id, sa){
+    if (Array.isArray(sa.answers) && sa.answers.length){ examWriteSaved(id, sa.answers); return; }
+    const k = examSaveKey(id), v = JSON.stringify({ a: [], ns: 1, sc: +sa.score || 0, mx: +sa.max || 0, t: Date.now() - EXAM_SYNC_GRACE_MS - 1000 });
+    safeStorageSet(k, v); setCookie(k, v, 730);
+  }
   // بترجّع Promise<[ids الامتحانات اللي الأستاذ أعاد فتحها]> وما بتفشل أبدًا
   function examSyncSaved(force){
     const u = getSessionUser();
@@ -92,7 +97,14 @@
           const k = examSaveKey(id); safeStorageRemove(k); deleteCookie(k);   // الأستاذ أعاد فتحه
           cleared.push(id);
         });
+        // السيرفر عنده تسليم للطالب بس الجهاز ما عنده نسخة (جهاز جديد / مسح بيانات): بننزّل النتيجة للجهاز
+        // عشان يشوف علامته ويقدر ينزّل الامتحان PDF. بدون إجابات بنحفظ العلامة بس.
+        Object.keys(names).forEach(function(id){
+          const sa = map[examNorm(names[id])];
+          if (sa && !examGetSaved(id)) examMirrorServer(id, sa);
+        });
         examReconcileCards();
+        try { if (typeof window.__refreshPdfCards === 'function') window.__refreshPdfCards(); } catch(e){}
         return cleared;
       })
       .catch(function(){ return []; })
@@ -114,31 +126,21 @@
         if (typeof orig !== 'function') return;
         window[f] = function(){
           const self = this, args = arguments, o = OPENERS[f], id = o.id(args);
-          function open(fresh){
-            // قبل ما نمنع الطالب: نتأكد من السيرفر (يمكن الأستاذ أعاد فتح الامتحان من الداشبورد وصفحة الطالب لسا قديمة)
-            if (!fresh && getSessionUser() && (examServerAttempt(id) || examGetSaved(id))){
-              return examSyncSaved(true).then(function(){ return open(true); });
-            }
-            // محاولة وحدة: إذا السيرفر مسجّل تسليم الطالب وما عنده نسخة محلية (جهاز جديد) بنرجّعله نتيجته ما بنفتح الامتحان من جديد
+          function open(){
+            // السيرفر هو المرجع: إذا الأستاذ أعاد فتح الامتحان لهذا الطالب (من الداشبورد) بيكون فحصنا الأخير حذف نسخته،
+            // وإذا لسا مسلّمه بنعرض له نتيجته (مع إمكانية تنزيل PDF) بدل ما نمنعه أو نفتح الامتحان من جديد.
             const sa = examServerAttempt(id);
-            if (sa && !examGetSaved(id)){
-              if (Array.isArray(sa.answers) && sa.answers.length){ examWriteSaved(id, sa.answers); }
-              else {
-                alert('سلّمت هذا الامتحان من قبل (علامتك ' + sa.score + ' / ' + sa.max + '). كل امتحان بينعمل مرة وحدة. إذا بدك تعيده تواصل مع الأستاذ.');
-                return;
-              }
-            }
+            if (sa && !examGetSaved(id)) examMirrorServer(id, sa);
             const r = orig.apply(self, args);
             setTimeout(examReconcileCards, 0);
-            examSyncSaved(false).then(function(cleared){
-              const el = document.getElementById(o.el(args));
-              if (cleared.indexOf(id) !== -1 && el && !el.hidden) orig.apply(self, args);   // الأستاذ أعاد فتحه: بنعيد فتحه جديد
-            });
             try { if (typeof verifyAccount === 'function') verifyAccount(false); } catch(e){}
             return r;
           }
-          // أول مرة بالجلسة: بننتظر رد السيرفر (أجزاء من الثانية) قبل ما نقرر
-          if (!examServerMap && getSessionUser()) return examSyncSaved(true).then(function(){ return open(true); });
+          // كل مرة بيفتح الطالب امتحان بنسأل السيرفر من جديد (بدون كاش) — هيك إعادة الفتح من الداشبورد بتظهر فورًا
+          // وبتنطبق على الطالب اللي أعدنا له بس. إذا السيرفر تأخر أكثر من 4 ثواني بنكمل بآخر بيانات عنا.
+          if (getSessionUser()){
+            return Promise.race([examSyncSaved(true), new Promise(function(r){ setTimeout(r, 4000); })]).then(open, open);
+          }
           return open();
         };
       });

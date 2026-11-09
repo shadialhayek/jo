@@ -472,6 +472,7 @@
       ensureBtn(r);
     });
     setupCards();
+    window.__refreshPdfCards = refreshCards;
     document.addEventListener('click', function(){ setTimeout(refreshCards, 60); }, true);
     window.addEventListener('hashchange', refreshCards);
     window.addEventListener('popstate', refreshCards);
