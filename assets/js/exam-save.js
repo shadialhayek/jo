@@ -114,7 +114,11 @@
         if (typeof orig !== 'function') return;
         window[f] = function(){
           const self = this, args = arguments, o = OPENERS[f], id = o.id(args);
-          function open(){
+          function open(fresh){
+            // قبل ما نمنع الطالب: نتأكد من السيرفر (يمكن الأستاذ أعاد فتح الامتحان من الداشبورد وصفحة الطالب لسا قديمة)
+            if (!fresh && getSessionUser() && (examServerAttempt(id) || examGetSaved(id))){
+              return examSyncSaved(true).then(function(){ return open(true); });
+            }
             // محاولة وحدة: إذا السيرفر مسجّل تسليم الطالب وما عنده نسخة محلية (جهاز جديد) بنرجّعله نتيجته ما بنفتح الامتحان من جديد
             const sa = examServerAttempt(id);
             if (sa && !examGetSaved(id)){
@@ -134,7 +138,7 @@
             return r;
           }
           // أول مرة بالجلسة: بننتظر رد السيرفر (أجزاء من الثانية) قبل ما نقرر
-          if (!examServerMap && getSessionUser()) return examSyncSaved(true).then(open);
+          if (!examServerMap && getSessionUser()) return examSyncSaved(true).then(function(){ return open(true); });
           return open();
         };
       });
