@@ -1,6 +1,6 @@
   // ===== البث المباشر (لايف فيسبوك) =====
   // api: رابط Apps Script الخاص بالبث (انظر live-apps-script.gs) | manualUrl: للتجربة فقط
-  const LIVE_CONFIG = { api: "", manualUrl: "" };
+  const LIVE_CONFIG = { api: (window.StudentAccountConfig && window.StudentAccountConfig.api ? window.StudentAccountConfig.api + "/api/site/live" : ""), manualUrl: "" };
   (function(){
     const sid = Math.random().toString(36).slice(2), $ = id => document.getElementById(id) || document.createElement('div');
     let current = '';
