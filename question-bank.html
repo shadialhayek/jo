@@ -28,7 +28,7 @@
 <link rel="preconnect" href="https://script.google.com">
 <link rel="preconnect" href="https://script.googleusercontent.com">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=20261109a">
+<link rel="stylesheet" href="assets/style.css?v=20261110c">
 </head>
 <body data-page="question-bank">
 
@@ -193,6 +193,20 @@
 </section>
 </div>
 
+<div class="wsv" id="wsViewer" hidden>
+  <div class="pdfbar">
+    <span class="pdfbar-page"><b id="wsPageNo">1</b><span class="pdfbar-of">/</span><span id="wsPageTot">1</span></span>
+    <span class="pdfbar-sep"></span>
+    <button type="button" class="pdfbar-ic" onclick="wsZoom(-1)" aria-label="تصغير">−</button>
+    <span class="pdfbar-zoom" id="wsZoomVal">100%</span>
+    <button type="button" class="pdfbar-ic" onclick="wsZoom(1)" aria-label="تكبير">+</button>
+    <span class="wsv-title" id="wsTitle"></span>
+    <button type="button" class="pdfbar-dl" onclick="wsDownload()">⬇ تحميل</button>
+    <button type="button" class="pdfbar-ic pdfbar-x" onclick="wsClose()" aria-label="إغلاق">✕</button>
+  </div>
+  <div class="wsv-body" id="wsBody"></div>
+</div>
+
 <footer>
   <div class="wrap">
     <div class="foot-grid">
@@ -244,14 +258,14 @@
     </div>
   </div>
 </div>
-<script src="assets/js/account-config.js?v=20261109a"></script>
-<script src="assets/js/account-widget.js?v=20261109a" defer></script>
-<script src="assets/js/core.js?v=20261109a"></script>
-<script src="assets/js/exam-save.js?v=20261109a"></script>
-<script src="assets/js/routes.js?v=20261109a"></script>
-<script src="assets/js/visited.js?v=20261109a"></script>
-<script src="assets/js/live.js?v=20261109a"></script>
-<script src="assets/js/form-popup.js?v=20261109a"></script>
-<script src="assets/js/site-cms.js?v=20261110b" defer></script>
+<script src="assets/js/account-config.js?v=20261110c"></script>
+<script src="assets/js/account-widget.js?v=20261110c" defer></script>
+<script src="assets/js/core.js?v=20261110c"></script>
+<script src="assets/js/exam-save.js?v=20261110c"></script>
+<script src="assets/js/routes.js?v=20261110c"></script>
+<script src="assets/js/visited.js?v=20261110c"></script>
+<script src="assets/js/live.js?v=20261110c"></script>
+<script src="assets/js/form-popup.js?v=20261110c"></script>
+<script src="assets/js/site-cms.js?v=20261110c" defer></script>
 </body>
 </html>

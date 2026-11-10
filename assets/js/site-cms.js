@@ -94,6 +94,8 @@
   function applyResources(r){
     $all('[data-cms]').forEach(function(n){ n.remove(); });
     $all('.item-card').forEach(function(c){ c.style.display = ''; });
+    // رسالة «المحتوى قريبًا» بتنخفي أول ما ينضاف عنصر للقائمة
+    $all('#view-question-bank .item-card-list > p').forEach(function(p){ p.style.display = ''; });
     if (!r) return;
     var hide = {}; (r.hideTitles || []).forEach(function(t){ hide[t] = true; });
     $all('.item-card').forEach(function(c){
@@ -102,7 +104,7 @@
     });
     (r.items || []).slice().reverse().forEach(function(it){
       if (it.hidden) return;
-      var root = it.kind === 'lesson' ? '#view-lessons' : '#view-eschool';
+      var root = it.kind === 'lesson' ? '#view-lessons' : it.kind === 'qbank' ? '#view-question-bank' : '#view-eschool';
       var list = document.querySelector(root + ' .gen-panel[data-gen="' + it.gen + '"] .item-card-list');
       var url = safeUrl(it.url);
       if (!list || !url) return;
@@ -111,19 +113,28 @@
       body.appendChild(el('span', 'item-card-badge', it.badge || ''));
       body.appendChild(el('h3', '', it.title));
       if (it.desc) body.appendChild(el('p', '', it.desc));
-      var prev = it.kind === 'lesson' ? '' : imgSrc(it.preview);
+      var pages = [];
+      if (it.kind !== 'lesson'){ [it.preview].concat(it.pages || []).forEach(function(x){ var u = imgSrc(x); if (u) pages.push(u); }); }
+      var prev = pages[0] || '';
+      var isImgOnly = /\.(jpe?g|png|webp)(\?|$)/i.test(url);
       var wid = 'cms' + String(it.id || '').replace(/[^a-z0-9]/gi, '');
       if (prev && wid.length > 3){
         // ورقة بصورة + PDF: «عرض الملف» بيفتح الصورة بالمعاينة، و«تحميل» بينزّل الـPDF (نفس أوراق العمل الأصلية)
-        var fname = (it.title || 'file') + '.pdf';
+        var fname = (it.title || 'file') + (isImgOnly ? (url.match(/\.(jpe?g|png|webp)/i) || ['.jpg'])[0] : '.pdf');
         var pdf = url;
         if (/\/files\/[A-Za-z0-9._-]+$/.test(url)) pdf = url + '?dl=1&n=' + encodeURIComponent(fname);
         var js = document.createElement('script'); js.type = 'application/json'; js.id = 'wsdata-' + wid; js.setAttribute('data-cms', it.id || '1');
-        js.textContent = JSON.stringify({ name: it.title, file: fname, pdf: pdf, pages: [prev] });
+        js.textContent = JSON.stringify({ name: it.title, file: fname, pdf: pdf, pages: pages });
         document.body.appendChild(js);
         var btns = el('div', 'item-card-btns');
         var vb = el('button', 'item-card-btn alt', 'عرض الملف'); vb.type = 'button'; vb.setAttribute('onclick', "wsView('" + wid + "')");
-        var db = el('button', 'item-card-btn', 'تحميل ⬇'); db.type = 'button'; db.setAttribute('onclick', "wsDownload('" + wid + "')");
+        var db;
+        if (isImgOnly){
+          // ملف صور بدون PDF: التحميل بينزّل الصورة نفسها
+          db = el('a', 'item-card-btn', 'تحميل ⬇'); db.href = pdf; db.setAttribute('download', fname); db.rel = 'noopener';
+        } else {
+          db = el('button', 'item-card-btn', 'تحميل ⬇'); db.type = 'button'; db.setAttribute('onclick', "wsDownload('" + wid + "')");
+        }
         btns.appendChild(vb); btns.appendChild(db);
         card.appendChild(body); card.appendChild(btns);
       } else {
@@ -132,6 +143,7 @@
         card.appendChild(body); card.appendChild(a);
       }
       list.insertBefore(card, list.firstChild);
+      $all(':scope > p', list).forEach(function(p){ p.style.display = 'none'; });
     });
   }
 
@@ -227,8 +239,193 @@
     nodes.forEach(function(n){ grid.appendChild(n); });
   }
 
+
+  // ---------- معرض الصور ----------
+  function applyGallery(list){
+    if (!Array.isArray(list)) return;
+    var track = document.getElementById('carTrack'); if (!track) return;
+    var shown = list.filter(function(g){ return g && g.show !== false && imgSrc(g.img); });
+    if (!shown.length) return;
+    track.textContent = '';
+    shown.forEach(function(g, i){
+      var sl = el('div', 'slide photo');
+      var im = el('img'); im.src = imgSrc(g.img); im.alt = g.caption || ('صورة ' + (i + 1) + ' من لحظات الأستاذ شادي الحايك مع الطلاب'); im.decoding = 'async';
+      if (i > 0) im.loading = 'lazy';
+      sl.appendChild(im);
+      if (g.caption){
+        var cap = el('div', '', g.caption);
+        cap.style.cssText = 'position:absolute;inset-inline:0;bottom:0;padding:34px 16px 14px;background:linear-gradient(transparent,rgba(0,0,0,.72));color:#fff;font-weight:700;text-align:center;font-size:1rem';
+        sl.style.position = 'relative'; sl.appendChild(cap);
+      }
+      track.appendChild(sl);
+    });
+    if (typeof window.__initCarousel === 'function') window.__initCarousel();
+  }
+
+  // ---------- آراء الطلاب ----------
+  function applyTestimonials(list){
+    if (!Array.isArray(list)) return;
+    var grid = document.querySelector('.testi-grid'); if (!grid) return;
+    var shown = list.filter(function(t){ return t && t.show !== false && (t.text || imgSrc(t.img)); });
+    grid.textContent = '';
+    if (!shown.length){ var e = el('p', '', 'ترقّبوا آراء الطلاب قريبًا'); e.style.cssText = 'grid-column:1/-1;text-align:center;opacity:.7;font-weight:700;padding:30px 0'; grid.appendChild(e); return; }
+    shown.forEach(function(t){
+      var item = el('div', 't-item');
+      var n = Math.max(0, Math.min(5, +t.stars || 0));
+      if (n){ var st = el('div', 'stars', new Array(n + 1).join('★')); item.appendChild(st); }
+      var src = imgSrc(t.img);
+      if (src){
+        var im = el('img'); im.src = src; im.alt = t.name || 'رأي طالب'; im.loading = 'lazy'; im.decoding = 'async';
+        im.style.cssText = 'width:100%;border-radius:12px;display:block;margin:0 0 14px;background:#0003';
+        item.appendChild(im);
+      }
+      if (t.text) item.appendChild(el('p', 'quote', '"' + t.text + '"'));
+      var who = el('div', 't-who');
+      var name = t.name || 'طالب من طلاب الأستاذ شادي';
+      who.appendChild(el('div', 't-avatar', Array.from(name.replace(/^(الطالب|الطالبة|طالب|طالبة)\s+/, ''))[0] || 'ط'));
+      var box = el('div'); box.appendChild(el('b', '', name)); box.appendChild(el('span', '', t.role || 'رأي طالب'));
+      who.appendChild(box); item.appendChild(who);
+      grid.appendChild(item);
+    });
+  }
+
+  // ---------- امتحانات أنشأها الأستاذ من الداشبورد ----------
+  // بتتسجّل بنفس محرك الامتحانات الأصلي (EXAMS)، فكل شي بيشتغل زي الباقي: محاولة وحدة، علامة بحساب الطالب، لوحة الشرف، PDF.
+  var CX_LETTERS = ['a', 'b', 'c', 'd', 'e', 'f'];
+  var cxSig = {}, cxTimer = null, cxRetries = 0;
+  // نص رياضي: x^2 → أُس، والأجزاء اللاتينية/الأرقام بتنعرض يسار-يمين
+  function mathNodes(parent, text){
+    var re = /([A-Za-z0-9π°√∞][A-Za-z0-9π°√∞+\-−×÷=<>≤≥|().,\/^_ ]*[A-Za-z0-9π°√∞)|°])|[A-Za-z0-9π°√∞]/g, last = 0, m;
+    text = String(text || '');
+    function plain(t){ if (t) parent.appendChild(document.createTextNode(t)); }
+    while ((m = re.exec(text))){
+      plain(text.slice(last, m.index));
+      var b = document.createElement('bdi'); b.setAttribute('dir', 'ltr');
+      var parts = m[0].split(/\^(\([^)]*\)|-?[A-Za-z0-9]+)/);
+      parts.forEach(function(seg, i){
+        if (i % 2){ var sp = document.createElement('sup'); sp.textContent = seg.replace(/^\(|\)$/g, ''); b.appendChild(sp); }
+        else if (seg) b.appendChild(document.createTextNode(seg));
+      });
+      parent.appendChild(b);
+      last = m.index + m[0].length;
+    }
+    plain(text.slice(last));
+  }
+  function cxBuild(it){
+    var id = it.id, qs = it.questions || [], n = qs.length || it.n || 0;
+    // كرت الامتحان
+    var list = document.querySelector('#view-exams .gen-panel[data-gen="' + it.gen + '"] .item-card-list');
+    if (list){
+      var card = el('div', 'item-card'); card.setAttribute('data-exam', id); card.setAttribute('data-cx', '1');
+      if (it.opens) card.setAttribute('data-opens', it.opens);
+      var body = el('div', 'item-card-body');
+      body.appendChild(el('span', 'item-card-badge', it.badge || 'امتحان إلكتروني'));
+      body.appendChild(el('h3', '', it.title));
+      body.appendChild(el('p', '', it.desc || (n + ' ' + (n === 1 ? 'سؤال' : n <= 10 ? 'أسئلة' : 'سؤال') + ' اختيار من متعدد — العلامة من ' + n)));
+      var cd = el('div', 'exam-cd'); cd.hidden = true;
+      cd.appendChild(el('div', 'exam-cd-when', it.opens ? whenText(it.opens) : ''));
+      var boxes = el('div', 'exam-cd-boxes'); boxes.setAttribute('aria-live', 'off');
+      [['d', 'يوم', '0'], ['h', 'ساعة', '00'], ['m', 'دقيقة', '00'], ['s', 'ثانية', '00']].forEach(function(u){
+        var sp = el('span'); var b = el('b', '', u[2]); b.setAttribute('data-u', u[0]); sp.appendChild(b); sp.appendChild(el('small', '', u[1])); boxes.appendChild(sp);
+      });
+      cd.appendChild(boxes); body.appendChild(cd);
+      var a = el('a', 'item-card-btn', 'ابدأ الامتحان ›'); a.href = '#'; a.setAttribute('onclick', "exOpen('" + id + "'); return false;");
+      card.appendChild(body); card.appendChild(a);
+      list.insertBefore(card, list.firstChild);
+    }
+    // نافذة الامتحان
+    var d = el('div', 'qx'); d.id = 'ex-' + id; d.setAttribute('data-nosnippet', ''); d.setAttribute('data-cx', '1');
+    d.setAttribute('role', 'dialog'); d.setAttribute('aria-modal', 'true'); d.setAttribute('aria-label', it.title); d.hidden = true;
+    var wrap = el('div', 'qx-wrap'); d.appendChild(wrap);
+    var top = el('div', 'qx-top'); top.appendChild(el('h2', '', it.title));
+    var tb = el('div'); tb.style.cssText = 'display:flex;gap:8px';
+    var b1 = el('button', 'qx-close', '🔗 نسخ الرابط'); b1.type = 'button'; b1.setAttribute('onclick', 'copyPageLink()');
+    var b2 = el('button', 'qx-close', 'إغلاق ✕'); b2.type = 'button'; b2.setAttribute('onclick', "exClose('" + id + "')");
+    tb.appendChild(b1); tb.appendChild(b2); top.appendChild(tb); wrap.appendChild(top);
+    var eb = el('div', 'ex-body');
+    eb.appendChild(el('p', 'qx-hint', 'اختر رمز الإجابة الصحيحة لكل سؤال. لكل سؤال علامة واحدة (المجموع ' + n + ').'));
+    var qwrap = el('div', 'ex-questions');
+    qs.forEach(function(q, qi){
+      var qe = el('div', 'qx-q'); var bb = el('b'); bb.appendChild(el('span', 'qx-n', String(qi + 1))); bb.appendChild(document.createTextNode(' ')); mathNodes(bb, q.text); qe.appendChild(bb);
+      var qi_ = imgSrc(q.img);
+      if (qi_){ var im = el('img'); im.src = qi_; im.alt = 'صورة السؤال ' + (qi + 1); im.loading = 'lazy'; im.style.cssText = 'display:block;max-width:100%;max-height:340px;margin:10px auto;border-radius:10px;background:#fff'; qe.appendChild(im); }
+      var os = el('div', 'qx-opts');
+      q.opts.forEach(function(o, oi){
+        var btn = el('button', 'qx-opt'); btn.type = 'button'; btn.setAttribute('data-q', String(qi)); btn.setAttribute('data-o', CX_LETTERS[oi]);
+        btn.appendChild(el('span', 'qx-l', CX_LETTERS[oi])); var t = el('span', 'qx-t'); mathNodes(t, o); btn.appendChild(t); os.appendChild(btn);
+      });
+      qe.appendChild(os); qwrap.appendChild(qe);
+    });
+    eb.appendChild(qwrap);
+    eb.appendChild(el('div', 'qx-msg ex-msg'));
+    var sub = el('button', 'btn btn-primary qx-submit', 'إنهاء الاختبار وعرض النتيجة'); sub.type = 'button'; sub.setAttribute('onclick', "exSubmit('" + id + "')");
+    eb.appendChild(sub); wrap.appendChild(eb);
+    var rs = el('div', 'qx-result ex-result'); rs.hidden = true;
+    rs.appendChild(el('h2', '', 'انتهى الاختبار'));
+    var sc = el('div', 'qx-score'); sc.appendChild(el('span', 'ex-score', '0')); sc.appendChild(el('small', '', ' / ' + n)); rs.appendChild(sc);
+    rs.appendChild(el('p', 'ex-note')); rs.appendChild(el('div', 'qx-review ex-review'));
+    var cl = el('button', 'btn btn-primary', 'إغلاق'); cl.type = 'button'; cl.setAttribute('onclick', "exClose('" + id + "')"); rs.appendChild(cl);
+    wrap.appendChild(rs);
+    document.body.appendChild(d);
+    // تسجيل بمحرك الامتحانات الأصلي
+    EXAMS[id] = { key: qs.map(function(q){ return CX_LETTERS[q.ans]; }), notes: qs.map(function(q){ return q.note || ''; }), sheet: it.title, title: it.title, gen: it.gen, cx: 1, ans: [] };
+    d.querySelectorAll('.ex-questions .qx-opt').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var q = +btn.dataset.q;
+        EXAMS[id].ans[q] = btn.dataset.o;
+        d.querySelectorAll('.ex-questions .qx-opt[data-q="' + q + '"]').forEach(function(b){ b.classList.toggle('sel', b === btn); });
+        d.querySelector('.ex-msg').textContent = '';
+      });
+    });
+  }
+  function cxRemove(id){
+    $all('.item-card[data-exam="' + id + '"][data-cx]').forEach(function(n){ n.remove(); });
+    var d = document.getElementById('ex-' + id); if (d) d.remove();
+    try { delete EXAMS[id]; } catch(e){}
+  }
+  function applyCustomExams(x){
+    if (typeof EXAMS === 'undefined' || !document.getElementById('view-exams') || !x) return;
+    var items = Array.isArray(x.items) ? x.items : [];
+    var keep = {};
+    items.forEach(function(it){
+      keep[it.id] = true;
+      var sig = JSON.stringify(it);
+      var d = document.getElementById('ex-' + it.id);
+      if (d && cxSig[it.id] === sig) return;
+      if (d && !d.hidden) return;              // الطالب جوّا الامتحان: ما منلمسه
+      if (d) cxRemove(it.id);
+      cxBuild(it); cxSig[it.id] = sig;
+    });
+    $all('[data-cx].qx').forEach(function(d){ var id = d.id.replace(/^ex-/, ''); if (!keep[id]) { cxRemove(id); delete cxSig[id]; } });
+    try { applyExams(lastCms && lastCms.exams); } catch(e){}
+    // امتحان ما حان موعده: السيرفر بعتلنا بدون أسئلة، بنعيد الجلب لما يفتح
+    clearTimeout(cxTimer);
+    var next = Infinity;
+    items.forEach(function(it){ if (it.questions === null && it.opens){ var t = Date.parse(it.opens); if (!isNaN(t)) next = Math.min(next, t); } });
+    if (next < Infinity){
+      var wait = next - Date.now();
+      if (wait > 0) { cxRetries = 0; cxTimer = setTimeout(cxRefresh, Math.min(wait + 1500, 2147000000)); }
+      else if (cxRetries < 8) { cxRetries++; cxTimer = setTimeout(cxRefresh, 6000); }
+    }
+    // رابط مباشر لامتحان #exams/2010/c123…
+    try {
+      var hm = /^#exams\/(\d{4})\/(c[a-f0-9]{10})$/.exec(location.hash || '');
+      if (hm && EXAMS[hm[2]] && document.getElementById('ex-' + hm[2]).hidden && typeof routeFromHash === 'function') routeFromHash();
+    } catch(e){}
+  }
+  function cxRefresh(){
+    fetch(API + '/api/site/content?_=' + Date.now()).then(function(r){ return r.json(); }).then(function(c){
+      if (!c || !c.ok) return;
+      try { localStorage.setItem(CACHE, JSON.stringify(c)); } catch(e){}
+      apply(c);
+    }).catch(function(){});
+  }
+
+  var lastCms = null;
+
   function apply(c){
     if (!c) return;
+    lastCms = c;
     try { applyBanner(c.banner); } catch(e){ console.warn('cms banner', e); }
     try { applyTiles(c.tiles); } catch(e){ console.warn('cms tiles', e); }
     try { applySocial(c.social); } catch(e){ console.warn('cms social', e); }
@@ -237,6 +434,9 @@
     try { applyGroups(c.groups); } catch(e){ console.warn('cms groups', e); }
     try { applyResources(c.resources); } catch(e){ console.warn('cms resources', e); }
     try { applyExams(c.exams); } catch(e){ console.warn('cms exams', e); }
+    try { applyGallery(c.gallery); } catch(e){ console.warn('cms gallery', e); }
+    try { applyTestimonials(c.testimonials); } catch(e){ console.warn('cms testimonials', e); }
+    try { applyCustomExams(c.examlist); } catch(e){ console.warn('cms custom exams', e); }
   }
 
   try { var cached = JSON.parse(localStorage.getItem(CACHE) || 'null'); if (cached) apply(cached); } catch(e){}

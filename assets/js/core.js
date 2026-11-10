@@ -797,41 +797,51 @@
   }, { threshold: 0.6 });
   stats.forEach(s => statIO.observe(s));
 
-  // carousel
+  // carousel (بتنبني من جديد لما الداشبورد يغيّر صور المعرض: window.__initCarousel)
   if (document.getElementById('carTrack')){
   const track = document.getElementById('carTrack');
   const slides = track.children;
   const dotsWrap = document.getElementById('carDots');
-  let idx = 0;
   const galThumbs = document.getElementById('galThumbs');
-  for (let i=0;i<slides.length;i++){
-    const d = document.createElement('button');
-    d.className = 'dot' + (i===0 ? ' active' : '');
-    d.addEventListener('click', () => goTo(i));
-    dotsWrap.appendChild(d);
-  }
+  let idx = 0, autoSlide = null;
   function goTo(i){
+    if (!slides.length) return;
     idx = (i + slides.length) % slides.length;
     track.style.transform = `translateX(${idx * 100}%)`;
     [...dotsWrap.children].forEach((d,n) => d.classList.toggle('active', n===idx));
     if (galThumbs) [...galThumbs.children].forEach((b,n) => b.classList.toggle('active', n===idx));
   }
-  if (galThumbs){
-    [...slides].forEach(function(sl,i){
-      const im = sl.querySelector('img'); if (!im) return;
-      const b = document.createElement('button'); b.type = 'button'; b.setAttribute('aria-label','عرض الصورة ' + (i+1));
-      if (i === 0) b.className = 'active';
-      const t = document.createElement('img'); t.src = im.src; t.alt = ''; b.appendChild(t);
-      b.addEventListener('click', function(){ goTo(i); });
-      galThumbs.appendChild(b);
-    });
+  function startAuto(){ clearInterval(autoSlide); if (slides.length > 1) autoSlide = setInterval(() => goTo(idx+1), 4500); }
+  function initCarousel(){
+    clearInterval(autoSlide);
+    idx = 0;
+    dotsWrap.textContent = '';
+    if (galThumbs) galThumbs.textContent = '';
+    for (let i=0;i<slides.length;i++){
+      const d = document.createElement('button');
+      d.className = 'dot' + (i===0 ? ' active' : '');
+      d.addEventListener('click', () => goTo(i));
+      dotsWrap.appendChild(d);
+    }
+    if (galThumbs){
+      [...slides].forEach(function(sl,i){
+        const im = sl.querySelector('img'); if (!im) return;
+        const b = document.createElement('button'); b.type = 'button'; b.setAttribute('aria-label','عرض الصورة ' + (i+1));
+        if (i === 0) b.className = 'active';
+        const t = document.createElement('img'); t.src = im.src; t.alt = ''; b.appendChild(t);
+        b.addEventListener('click', function(){ goTo(i); });
+        galThumbs.appendChild(b);
+      });
+    }
+    track.style.transform = 'translateX(0)';
+    startAuto();
   }
-  document.getElementById('carNext').addEventListener('click', () => goTo(idx+1));
-  document.getElementById('carPrev').addEventListener('click', () => goTo(idx-1));
-  let autoSlide = setInterval(() => goTo(idx+1), 4500);
-  track.parentElement.addEventListener('mouseenter', () => clearInterval(autoSlide));
-  track.parentElement.addEventListener('mouseleave', () => autoSlide = setInterval(() => goTo(idx+1), 4500));
-
+  document.getElementById('carNext').onclick = () => goTo(idx+1);
+  document.getElementById('carPrev').onclick = () => goTo(idx-1);
+  track.parentElement.onmouseenter = () => clearInterval(autoSlide);
+  track.parentElement.onmouseleave = () => startAuto();
+  window.__initCarousel = initCarousel;
+  initCarousel();
   }
 
   // نموذج التواصل — بيرسل البيانات لجدول الشيت

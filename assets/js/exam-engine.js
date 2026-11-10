@@ -87,6 +87,7 @@
         fb.innerHTML = (mine ? '✗ إجابتك خاطئة (<bdi dir="ltr">' + mine + '</bdi>)' : '✗ لم تجب عن هذا السؤال') + ' — الإجابة الصحيحة: <bdi dir="ltr">' + key + '</bdi>';
       }
       qEl.appendChild(fb);
+      if (ex.notes && ex.notes[i]){ const nt = document.createElement('div'); nt.className = 'qx-fb'; nt.style.cssText = 'opacity:.92;margin-top:6px'; nt.textContent = '💡 ' + ex.notes[i]; qEl.appendChild(nt); }
     });
     rv.appendChild(clone);
     d.querySelector('.ex-body').hidden = true;
