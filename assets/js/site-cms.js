@@ -1,6 +1,6 @@
 // ===== محتوى الموقع من الداشبورد =====
 // بيجيب الإعدادات من السيرفر (إعلان، جدول، جروبات، دروس، أوراق عمل، مواعيد امتحانات، رقم الواتساب)
-// وبيطبّقها على الصفحة. لو السيرفر مش متاح بيضل الموقع على محتواه الأصلي (ما بيخرب شي).
+// وبيطبّقها على الصفحة (ومعهم مربعات الرئيسية وكروت التواصل). لو السيرفر مش متاح بيضل الموقع على محتواه الأصلي (ما بيخرب شي).
 (function(){
   var API = (window.StudentAccountConfig && window.StudentAccountConfig.api) || '';
   if (!API) return;
@@ -111,9 +111,26 @@
       body.appendChild(el('span', 'item-card-badge', it.badge || ''));
       body.appendChild(el('h3', '', it.title));
       if (it.desc) body.appendChild(el('p', '', it.desc));
-      var a = el('a', 'item-card-btn', it.kind === 'lesson' ? 'شاهد الحصة ›' : 'افتح الملف ›');
-      a.href = url; a.target = '_blank'; a.rel = 'noopener';
-      card.appendChild(body); card.appendChild(a);
+      var prev = it.kind === 'lesson' ? '' : imgSrc(it.preview);
+      var wid = 'cms' + String(it.id || '').replace(/[^a-z0-9]/gi, '');
+      if (prev && wid.length > 3){
+        // ورقة بصورة + PDF: «عرض الملف» بيفتح الصورة بالمعاينة، و«تحميل» بينزّل الـPDF (نفس أوراق العمل الأصلية)
+        var fname = (it.title || 'file') + '.pdf';
+        var pdf = url;
+        if (/\/files\/[A-Za-z0-9._-]+$/.test(url)) pdf = url + '?dl=1&n=' + encodeURIComponent(fname);
+        var js = document.createElement('script'); js.type = 'application/json'; js.id = 'wsdata-' + wid; js.setAttribute('data-cms', it.id || '1');
+        js.textContent = JSON.stringify({ name: it.title, file: fname, pdf: pdf, pages: [prev] });
+        document.body.appendChild(js);
+        var btns = el('div', 'item-card-btns');
+        var vb = el('button', 'item-card-btn alt', 'عرض الملف'); vb.type = 'button'; vb.setAttribute('onclick', "wsView('" + wid + "')");
+        var db = el('button', 'item-card-btn', 'تحميل ⬇'); db.type = 'button'; db.setAttribute('onclick', "wsDownload('" + wid + "')");
+        btns.appendChild(vb); btns.appendChild(db);
+        card.appendChild(body); card.appendChild(btns);
+      } else {
+        var a = el('a', 'item-card-btn', it.kind === 'lesson' ? 'شاهد الحصة ›' : 'افتح الملف ›');
+        a.href = url; a.target = '_blank'; a.rel = 'noopener';
+        card.appendChild(body); card.appendChild(a);
+      }
       list.insertBefore(card, list.firstChild);
     });
   }
@@ -140,9 +157,81 @@
     });
   }
 
+  // ---------- مربعات الصفحة الرئيسية ----------
+  function imgSrc(p){
+    p = String(p || '');
+    if (/^\/files\/[A-Za-z0-9._-]+$/.test(p)) return API + p;
+    if (/^assets\/img\/[A-Za-z0-9._-]+$/.test(p)) return p;
+    return /^https?:\/\//i.test(p) ? p : '';
+  }
+  function applyTiles(list){
+    if (!Array.isArray(list) || !list.length) return;
+    var grid = document.querySelector('.home-grid-boxes'); if (!grid) return;
+    var nodes = [];
+    list.forEach(function(t){
+      if (!t || t.show === false) return;
+      var node;
+      if (t.to === 'url'){
+        var u = safeUrl(t.url); if (!u) return;
+        node = el('a', 'feat'); node.href = u; node.target = '_blank'; node.rel = 'noopener'; node.style.textDecoration = 'none';
+      } else {
+        if (!t.view) return;
+        node = el('button', 'feat'); node.type = 'button';
+        node.addEventListener('click', function(){
+          try {
+            if (t.view === 'contact') window.goHomeSection('contact'); else window.showView(t.view);
+          } catch(e){ console.warn('cms tile', e); }
+        });
+      }
+      if (t.label) node.setAttribute('aria-label', t.label);
+      var src = imgSrc(t.img);
+      if (src){
+        node.className += ' feat-img';
+        var im = el('img'); im.src = src; im.alt = t.label || ''; im.loading = 'lazy'; im.decoding = 'async';
+        node.appendChild(im);
+      } else {
+        node.appendChild(el('h4', '', t.label || ''));
+      }
+      nodes.push(node);
+    });
+    if (!nodes.length) return;
+    grid.textContent = '';
+    nodes.forEach(function(n){ grid.appendChild(n); });
+  }
+
+  // ---------- كروت التواصل الاجتماعي ----------
+  var FOOT_LABELS = { facebook: 'فيسبوك', instagram: 'انستغرام', snapchat: 'سناب شات', youtube: 'يوتيوب', telegram: 'تيليجرام', whatsapp: 'واتساب' };
+  function applySocial(list){
+    if (!Array.isArray(list) || !list.length) return;
+    var grid = document.querySelector('.social-grid'); if (!grid) return;
+    var nodes = [];
+    list.forEach(function(s){
+      if (!s) return;
+      var link = safeUrl(s.link);
+      var foot = FOOT_LABELS[s.id] && $all('.social-row a').filter(function(a){ return a.getAttribute('aria-label') === FOOT_LABELS[s.id]; })[0];
+      if (foot){ if (s.show === false) foot.style.display = 'none'; else { foot.style.display = ''; if (link) foot.setAttribute('href', link); } }
+      if (s.show === false || !link) return;
+      var a = el('a', 'social-card social-img'); a.href = link; a.target = '_blank'; a.rel = 'noopener';
+      if (s.label) a.setAttribute('aria-label', s.label);
+      var src = imgSrc(s.img);
+      if (src){ var im = el('img'); im.src = src; im.alt = s.label || ''; im.loading = 'lazy'; im.decoding = 'async'; a.appendChild(im); }
+      else {
+        a.style.cssText = 'display:flex;align-items:center;justify-content:center;text-align:center;color:#fff;font-weight:800;font-size:1.15rem;padding:12px';
+        a.appendChild(el('span', '', s.label || ''));
+      }
+      if (s.cta){ var cta = el('span', 'soc-cta', s.cta); cta.setAttribute('aria-hidden', 'true'); a.appendChild(cta); }
+      nodes.push(a);
+    });
+    if (!nodes.length) return;
+    grid.textContent = '';
+    nodes.forEach(function(n){ grid.appendChild(n); });
+  }
+
   function apply(c){
     if (!c) return;
     try { applyBanner(c.banner); } catch(e){ console.warn('cms banner', e); }
+    try { applyTiles(c.tiles); } catch(e){ console.warn('cms tiles', e); }
+    try { applySocial(c.social); } catch(e){ console.warn('cms social', e); }
     try { applyWhatsapp(c.settings); } catch(e){ console.warn('cms wa', e); }
     try { applySchedule(c.schedule); } catch(e){ console.warn('cms schedule', e); }
     try { applyGroups(c.groups); } catch(e){ console.warn('cms groups', e); }
