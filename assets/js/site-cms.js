@@ -405,7 +405,7 @@
     if (next < Infinity){
       var wait = next - Date.now();
       if (wait > 0) { cxRetries = 0; cxTimer = setTimeout(cxRefresh, Math.min(wait + 1500, 2147000000)); }
-      else if (cxRetries < 8) { cxRetries++; cxTimer = setTimeout(cxRefresh, 6000); }
+      else if (cxRetries < 60) { cxRetries++; cxTimer = setTimeout(cxRefresh, 6000); }
     }
     // رابط مباشر لامتحان #exams/2010/c123…
     try {
@@ -414,12 +414,14 @@
     } catch(e){}
   }
   function cxRefresh(){
-    fetch(API + '/api/site/content?_=' + Date.now()).then(function(r){ return r.json(); }).then(function(c){
+    return fetch(API + '/api/site/content?_=' + Date.now()).then(function(r){ return r.json(); }).then(function(c){
       if (!c || !c.ok) return;
       try { localStorage.setItem(CACHE, JSON.stringify(c)); } catch(e){}
       apply(c);
     }).catch(function(){});
   }
+  // بيستخدمه exOpen(): إذا الامتحان انبنى وهو مقفول (بدون أسئلة) بنجلب الأسئلة فورًا قبل ما نفتحه
+  window.cxRefreshNow = cxRefresh;
 
   var lastCms = null;
 

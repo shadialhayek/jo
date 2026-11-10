@@ -15,6 +15,16 @@
   function exOpen(id){
     if (examNeedLogin(function(){ exOpen(id); })) return;
     if (typeof examIsLocked === 'function' && examIsLocked(id)) return;   // لسه ما حان موعده
+    // امتحان من الداشبورد انبنى وهو مقفول (السيرفر بعته بدون أسئلة): نجلب الأسئلة أول، وبعدين نفتحه
+    if (EXAMS[id] && EXAMS[id].cx && !EXAMS[id].key.length){
+      if (typeof window.cxRefreshNow === 'function'){
+        window.cxRefreshNow().then(function(){
+          if (EXAMS[id] && EXAMS[id].key.length) exOpen(id);
+          else alert('تعذّر تحميل أسئلة الامتحان. تأكد من الإنترنت وجرّب مرة ثانية.');
+        });
+      } else alert('الأسئلة لسا ما نزلت. حدّث الصفحة وجرّب مرة ثانية.');
+      return;
+    }
     const ex = EXAMS[id], d = document.getElementById('ex-' + id);
     try { history.replaceState(history.state, '', '#exams/' + (ex.gen||'2010') + '/' + id); } catch(e){}
     ex.ans = [];
