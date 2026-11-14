@@ -300,6 +300,61 @@
       });
       return n;
     }
+    // ===== معادلات LaTeX ($...$ من محرر الداشبورد) → صور =====
+    // html2canvas بيخرّب KaTeX (حروف ناقصة وقص)، فبنرسم كل معادلة بـ MathJax كـ SVG (مسارات بدون خطوط) ونحوّلها لصورة PNG قبل التصوير.
+    var mjP = null;
+    function loadMathJax(){
+      if (window.MathJax && window.MathJax.tex2svg) return Promise.resolve();
+      if (mjP) return mjP;
+      mjP = new Promise(function(ok, no){
+        window.MathJax = { startup: { typeset: false }, svg: { fontCache: 'none' } };
+        var sc = document.createElement('script'); sc.async = true;
+        sc.src = 'https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js';
+        sc.onload = function(){ var st = window.MathJax && window.MathJax.startup && window.MathJax.startup.promise; (st || Promise.resolve()).then(ok, no); };
+        sc.onerror = function(){ no(new Error('mathjax')); };
+        document.head.appendChild(sc);
+      });
+      mjP.catch(function(){ mjP = null; });
+      return mjP;
+    }
+    function texToPng(tex, fsPx, display){
+      var cont = window.MathJax.tex2svg(tex, { display: !!display });
+      var svg = cont.querySelector('svg');
+      if (!svg) return Promise.reject(new Error('svg'));
+      var ex = fsPx * 0.43;
+      var w = parseFloat(svg.getAttribute('width')) * ex, h = parseFloat(svg.getAttribute('height')) * ex;
+      var va = parseFloat(svg.style.verticalAlign || '0') * ex;
+      if (!(w > 0) || !(h > 0)) return Promise.reject(new Error('size'));
+      svg.setAttribute('width', w + 'px'); svg.setAttribute('height', h + 'px');
+      svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      svg.removeAttribute('style'); svg.removeAttribute('focusable'); svg.removeAttribute('role');
+      var str = new XMLSerializer().serializeToString(svg).replace(/currentColor/g, '#111827');
+      return new Promise(function(ok, no){
+        var im = new Image();
+        im.onload = function(){
+          var S = 3, cv = document.createElement('canvas'); cv.width = Math.ceil(w * S); cv.height = Math.ceil(h * S);
+          cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height);
+          ok({ url: cv.toDataURL('image/png'), w: w, h: h, va: va });
+        };
+        im.onerror = function(){ no(new Error('img')); };
+        im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(str);
+      });
+    }
+    function texToImages(doc){
+      var nodes = Array.prototype.slice.call(doc.querySelectorAll('.qx-tex[data-tex]'));
+      if (!nodes.length) return Promise.resolve(0);
+      return loadMathJax().then(function(){
+        var fs = (parseFloat(window.getComputedStyle(nodes[0]).fontSize) || 17) * 1.1;
+        return Promise.all(nodes.map(function(n){
+          return texToPng(n.getAttribute('data-tex'), fs, n.getAttribute('data-display') === '1').then(function(r){
+            var img = document.createElement('img'); img.src = r.url; img.alt = '';
+            img.setAttribute('style', 'display:inline-block;max-width:none;width:' + r.w + 'px;height:' + r.h + 'px;vertical-align:' + r.va + 'px;margin:0 2px;');
+            var w = document.createElement('bdi'); w.setAttribute('dir', 'ltr'); w.setAttribute('style', 'white-space:nowrap;'); w.appendChild(img);
+            n.parentNode.replaceChild(w, n);
+          }).catch(function(e){ try { console.warn('tex fallback', e); } catch(_){} });
+        }));
+      }).catch(function(){ return 0; });
+    }
     function ensureMathFonts(){
       try {
         if (!document.fonts || !document.fonts.load) return Promise.resolve();
@@ -320,12 +375,14 @@
       var doc = document.createElement('div'); doc.className = 'pdfx'; doc.setAttribute('dir', 'rtl');
       doc.appendChild(b.el);
       box.appendChild(doc); host.appendChild(box); document.body.appendChild(host);
-      try { mathToImages(doc); } catch(e){ try { console.warn(e); } catch(_){} }   // معادلات مرسومة بدقة بدل ما html2canvas يخربط الكسور والجذور
       function done(){ if (host.parentNode) host.parentNode.removeChild(host); }
-      return window.html2canvas(box, {
-        scale: SCALE, useCORS: true, backgroundColor: '#ffffff', logging: false,
-        scrollX: 0, scrollY: 0, windowWidth: 1000, windowHeight: 1400, imageTimeout: 8000,
-        ignoreElements: function(el){ return el.parentNode === document.body && !(el.classList && el.classList.contains('pdfx-overlay')) && el.tagName !== 'STYLE' && el.tagName !== 'LINK'; }
+      return texToImages(doc).then(function(){
+        try { mathToImages(doc); } catch(e){ try { console.warn(e); } catch(_){} }   // معادلات مرسومة بدقة بدل ما html2canvas يخربط الكسور والجذور
+        return window.html2canvas(box, {
+          scale: SCALE, useCORS: true, backgroundColor: '#ffffff', logging: false,
+          scrollX: 0, scrollY: 0, windowWidth: 1000, windowHeight: 1400, imageTimeout: 8000,
+          ignoreElements: function(el){ return el.parentNode === document.body && !(el.classList && el.classList.contains('pdfx-overlay')) && el.tagName !== 'STYLE' && el.tagName !== 'LINK'; }
+        });
       }).then(function(c){ done(); return c; }, function(e){ done(); throw e; });
     }
     function newPage(){

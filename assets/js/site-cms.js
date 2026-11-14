@@ -327,6 +327,7 @@
   function texNode(parent, tex, display){
     var sp = document.createElement('span'); sp.className = 'qx-tex'; sp.setAttribute('dir', 'ltr');
     sp.textContent = '$' + tex + '$';          // احتياط لو تأخرت المكتبة
+    sp.setAttribute('data-tex', tex); if (display) sp.setAttribute('data-display', '1');
     parent.appendChild(sp);
     withKatex(function(){ window.katex.render(tex, sp, { throwOnError: false, displayMode: !!display }); });
   }
