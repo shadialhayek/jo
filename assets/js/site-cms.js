@@ -368,7 +368,8 @@
     wrap.appendChild(rs);
     document.body.appendChild(d);
     // تسجيل بمحرك الامتحانات الأصلي
-    EXAMS[id] = { key: qs.map(function(q){ return CX_LETTERS[q.ans]; }), notes: qs.map(function(q){ return q.note || ''; }), sheet: it.title, title: it.title, gen: it.gen, cx: 1, ans: [] };
+    // srv: التصحيح عند السيرفر، فما في مفتاح إجابات هون (بيوصل بعد التسليم من /api/me/exam-submit)
+    EXAMS[id] = { srv: 1, n: n, key: [], notes: [], sheet: it.title, title: it.title, gen: it.gen, cx: 1, ans: [] };
     d.querySelectorAll('.ex-questions .qx-opt').forEach(function(btn){
       btn.addEventListener('click', function(){
         var q = +btn.dataset.q;

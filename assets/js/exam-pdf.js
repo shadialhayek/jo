@@ -423,7 +423,7 @@
     function descFromCode(code){
       code = code || '';
       var m = /exOpen\('([\w-]+)'\)/.exec(code);
-      if (m) return { dialog: 'ex-' + m[1], save: m[1], prep: function(sv){ EXAMS[m[1]].ans = sv.a; exSubmit(m[1], true); }, open: function(){ exOpen(m[1]); } };
+      if (m) return { dialog: 'ex-' + m[1], save: m[1], prep: function(sv){ EXAMS[m[1]].ans = sv.a; return exSubmit(m[1], true); }, open: function(){ exOpen(m[1]); } };
       if (/openAngleExam/.test(code)) return { dialog: 'angleExam', save: 'angle', prep: function(sv){ angleAns = sv.a; submitAngleExam(true); }, open: function(){ openAngleExam(); } };
       if (/openPwExam/.test(code)) return { dialog: 'pwExam', save: 'piecewise', prep: function(sv){ pwAns = sv.a; submitPwExam(true); }, open: function(){ openPwExam(); } };
       return null;
@@ -448,8 +448,8 @@
           var sv = null; try { sv = examGetSaved(desc.save); } catch(err){}
           if (!sv){ refreshCards(); return; }
           busy(btn, true);
-          try { desc.prep(sv); } catch(err){ busy(btn, false); return; }
-          downloadPdf(document.getElementById(desc.dialog), prog(btn)).then(function(){ busy(btn, false); }, function(err){
+          var pr; try { pr = Promise.resolve(desc.prep(sv)); } catch(err){ busy(btn, false); return; }
+          pr.then(function(){ return downloadPdf(document.getElementById(desc.dialog), prog(btn)); }).then(function(){ busy(btn, false); }, function(err){
             try { console.warn(err); } catch(e){}
             busy(btn, false);
             alert('تعذّر تنزيل الملف تلقائياً. بنفتحلك الامتحان، اضغط تنزيل PDF من داخله.');
