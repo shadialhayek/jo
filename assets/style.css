@@ -858,3 +858,8 @@
 @media (max-width:900px){
   .acct-slot{position:absolute; right:16px; top:50%; transform:translateY(-50%);}
 }
+
+/* معادلات KaTeX داخل الامتحانات */
+.qx-tex{display:inline-block;direction:ltr;unicode-bidi:isolate;max-width:100%;overflow-x:auto;overflow-y:hidden;vertical-align:middle}
+.qx-tex .katex{direction:ltr;font-size:1.12em;color:inherit}
+.qx-tex .katex-display{margin:.4em 0}

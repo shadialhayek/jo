@@ -33,7 +33,37 @@
     document.getElementById('ex-' + id).hidden = true;
     document.body.style.overflow = '';
   }
+  // امتحانات الداشبورد: التصحيح عند السيرفر. الإجابات الصحيحة ما بتوصل للمتصفح إلا بعد ما يسلّم الطالب (أو لما يفتح مراجعته).
+  function exSubmitSrv(id, replay){
+    const ex = EXAMS[id], d = document.getElementById('ex-' + id), n = ex.n || 0;
+    const msg = d.querySelector('.ex-msg'), sub = d.querySelector('.qx-submit');
+    if (!replay && examGetSaved(id)) return Promise.resolve();
+    if (!replay && examNeedLogin()) return Promise.resolve();
+    const A = window.StudentAccount;
+    if (!A || typeof A.call !== 'function'){ msg.textContent = 'تعذّر الاتصال بالسيرفر، حدّث الصفحة وجرّب مرة ثانية.'; return Promise.resolve(); }
+    const answers = []; let left = 0;
+    for (let i = 0; i < n; i++){ answers.push(ex.ans[i] || ''); if (!ex.ans[i]) left++; }
+    if (!replay && left && !confirm('بقي ' + left + ' سؤال بلا إجابة. هل تريد إنهاء الاختبار؟')){
+      msg.textContent = 'أجب عن جميع الأسئلة قبل الإنهاء.';
+      return Promise.resolve();
+    }
+    if (sub) sub.disabled = true;
+    msg.textContent = replay ? '' : '⏳ جاري تسليم الامتحان…';
+    return A.call('POST', '/api/me/exam-submit', replay ? { id: id } : { id: id, answers: answers }).then(function(r){
+      if (!r || !r.ok || !Array.isArray(r.key)) throw new Error('bad');
+      ex.key = r.key; ex.notes = r.notes || []; ex.srvReady = true;
+      if (r.answers){ ex.ans = r.answers; examSetSaved(id, r.answers, r.key.length); }
+      else { ex.ans = []; examMirrorServer(id, { score: r.score, max: r.max }); }
+      msg.textContent = '';
+      exSubmit(id, true);
+      try { examSyncSaved(true); } catch(e){}
+    }).catch(function(e){
+      if (replay && e && e.status === 400){ const k = examSaveKey(id); safeStorageRemove(k); deleteCookie(k); msg.textContent = ''; return; }   // السيرفر ما عنده تسليم (الأستاذ أعاد فتحه)
+      msg.textContent = (e && e.status && e.message) ? e.message : 'تعذّر الاتصال بالسيرفر. تأكد من الإنترنت وجرّب مرة ثانية.';
+    }).then(function(){ if (sub) sub.disabled = false; });
+  }
   function exSubmit(id, replay){
+    if (EXAMS[id].srv && !EXAMS[id].srvReady) return exSubmitSrv(id, replay);
     const ex = EXAMS[id], d = document.getElementById('ex-' + id), n = ex.key.length;
     if (!replay && examGetSaved(id)) return;
     if (!replay && examNeedLogin()) return;
@@ -87,7 +117,7 @@
         fb.innerHTML = (mine ? '✗ إجابتك خاطئة (<bdi dir="ltr">' + mine + '</bdi>)' : '✗ لم تجب عن هذا السؤال') + ' — الإجابة الصحيحة: <bdi dir="ltr">' + key + '</bdi>';
       }
       qEl.appendChild(fb);
-      if (ex.notes && ex.notes[i]){ const nt = document.createElement('div'); nt.className = 'qx-fb'; nt.style.cssText = 'opacity:.92;margin-top:6px'; nt.textContent = '💡 ' + ex.notes[i]; qEl.appendChild(nt); }
+      if (ex.notes && ex.notes[i]){ const nt = document.createElement('div'); nt.className = 'qx-fb'; nt.style.cssText = 'opacity:.92;margin-top:6px'; if (window.cxMathNodes){ nt.appendChild(document.createTextNode('💡 ')); window.cxMathNodes(nt, ex.notes[i]); } else nt.textContent = '💡 ' + ex.notes[i]; qEl.appendChild(nt); }
     });
     rv.appendChild(clone);
     d.querySelector('.ex-body').hidden = true;

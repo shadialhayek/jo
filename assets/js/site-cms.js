@@ -294,7 +294,7 @@
   var CX_LETTERS = ['a', 'b', 'c', 'd', 'e', 'f'];
   var cxSig = {}, cxTimer = null, cxRetries = 0;
   // نص رياضي: x^2 → أُس، والأجزاء اللاتينية/الأرقام بتنعرض يسار-يمين
-  function mathNodes(parent, text){
+  function plainMath(parent, text){
     var re = /([A-Za-z0-9π°√∞][A-Za-z0-9π°√∞+\-−×÷=<>≤≥|().,\/^_ ]*[A-Za-z0-9π°√∞)|°])|[A-Za-z0-9π°√∞]/g, last = 0, m;
     text = String(text || '');
     function plain(t){ if (t) parent.appendChild(document.createTextNode(t)); }
@@ -311,6 +311,37 @@
     }
     plain(text.slice(last));
   }
+  // معادلات LaTeX بين $...$ (من محرر الداشبورد) بتنرسم بمكتبة KaTeX، وبتنحمّل أول ما تلزم
+  var katexQ = null;
+  function withKatex(fn){
+    if (window.katex) return fn();
+    if (!katexQ){
+      katexQ = [];
+      var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css'; document.head.appendChild(l);
+      var sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js'; sc.async = true;
+      sc.onload = function(){ var q = katexQ; katexQ = []; q.forEach(function(f){ try { f(); } catch(e){} }); };
+      document.head.appendChild(sc);
+    }
+    katexQ.push(fn);
+  }
+  function texNode(parent, tex, display){
+    var sp = document.createElement('span'); sp.className = 'qx-tex'; sp.setAttribute('dir', 'ltr');
+    sp.textContent = '$' + tex + '$';          // احتياط لو تأخرت المكتبة
+    parent.appendChild(sp);
+    withKatex(function(){ window.katex.render(tex, sp, { throwOnError: false, displayMode: !!display }); });
+  }
+  function mathNodes(parent, text){
+    text = String(text || '');
+    if (text.indexOf('$') < 0) return plainMath(parent, text);
+    var re = /\$\$([^$]+)\$\$|\$([^$]+)\$/g, last = 0, m;
+    while ((m = re.exec(text))){
+      plainMath(parent, text.slice(last, m.index));
+      texNode(parent, m[1] || m[2], !!m[1]);
+      last = m.index + m[0].length;
+    }
+    plainMath(parent, text.slice(last));
+  }
+  window.cxMathNodes = mathNodes;
   function cxBuild(it){
     var id = it.id, qs = it.questions || [], n = qs.length || it.n || 0;
     // كرت الامتحان
@@ -368,7 +399,8 @@
     wrap.appendChild(rs);
     document.body.appendChild(d);
     // تسجيل بمحرك الامتحانات الأصلي
-    EXAMS[id] = { key: qs.map(function(q){ return CX_LETTERS[q.ans]; }), notes: qs.map(function(q){ return q.note || ''; }), sheet: it.title, title: it.title, gen: it.gen, cx: 1, ans: [] };
+    // srv: التصحيح عند السيرفر، فما في مفتاح إجابات هون (بيوصل بعد التسليم من /api/me/exam-submit)
+    EXAMS[id] = { srv: 1, n: n, key: [], notes: [], sheet: it.title, title: it.title, gen: it.gen, cx: 1, ans: [] };
     d.querySelectorAll('.ex-questions .qx-opt').forEach(function(btn){
       btn.addEventListener('click', function(){
         var q = +btn.dataset.q;
@@ -398,6 +430,7 @@
     });
     $all('[data-cx].qx').forEach(function(d){ var id = d.id.replace(/^ex-/, ''); if (!keep[id]) { cxRemove(id); delete cxSig[id]; } });
     try { applyExams(lastCms && lastCms.exams); } catch(e){}
+    try { if (window.examScheduleTick) window.examScheduleTick(); } catch(e){}
     // امتحان ما حان موعده: السيرفر بعتلنا بدون أسئلة، بنعيد الجلب لما يفتح
     clearTimeout(cxTimer);
     var next = Infinity;
