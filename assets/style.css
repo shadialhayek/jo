@@ -859,7 +859,10 @@
   .acct-slot{position:absolute; right:16px; top:50%; transform:translateY(-50%);}
 }
 
-/* معادلات KaTeX داخل الامتحانات */
-.qx-tex{display:inline-block;direction:ltr;unicode-bidi:isolate;max-width:100%;overflow-x:auto;overflow-y:hidden;vertical-align:middle}
-.qx-tex .katex{direction:ltr;font-size:1.12em;color:inherit}
+/* معادلات KaTeX داخل الامتحانات (بدون overflow: القص كان بيقطع الكسور والاقتران المتشعب والتكامل) */
+.qx-tex{display:inline-block;direction:ltr;unicode-bidi:isolate;max-width:100%;vertical-align:middle;line-height:1.7;padding:2px 0;overflow:visible}
+.qx-tex .katex{direction:ltr;font-size:1.12em;color:inherit;line-height:1.5;text-indent:0}
 .qx-tex .katex-display{margin:.4em 0}
+.qx-opt .qx-t{overflow:visible;min-width:0}
+.qx-opts .qx-opt{overflow:visible !important}
+.pdfx .qx-tex, .pdf-doc .qx-tex, .print-target .qx-tex{overflow:visible;line-height:1.8;padding:4px 0}
