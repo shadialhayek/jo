@@ -398,6 +398,7 @@
     });
     $all('[data-cx].qx').forEach(function(d){ var id = d.id.replace(/^ex-/, ''); if (!keep[id]) { cxRemove(id); delete cxSig[id]; } });
     try { applyExams(lastCms && lastCms.exams); } catch(e){}
+    try { if (window.examScheduleTick) window.examScheduleTick(); } catch(e){}
     // امتحان ما حان موعده: السيرفر بعتلنا بدون أسئلة، بنعيد الجلب لما يفتح
     clearTimeout(cxTimer);
     var next = Infinity;

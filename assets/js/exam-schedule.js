@@ -30,8 +30,10 @@
     function tick(){
       if (document.hidden) return;
       cards().forEach(function(card){
+       try {
         var left = openAt(card) - now();
         var cd = card.querySelector('.exam-cd'), btn = card.querySelector('a.item-card-btn');
+        if (!cd || isNaN(left)) return;
         if (left > 0){
           var s = Math.floor(left / 1000);
           var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60;
@@ -48,8 +50,10 @@
           cd.hidden = false;
           if (btn){ btn.textContent = 'ابدأ الامتحان ›'; btn.removeAttribute('aria-disabled'); }
         }
+       } catch(e){}   // كرت واحد فيه مشكلة ما لازم يوقف العدّاد على باقي الكروت
       });
     }
+    window.examScheduleTick = tick;   // site-cms.js بينادي عليه فور بناء كروت امتحانات الداشبورد (بدون انتظار ثانية)
     // قبل visited.js: ضغطة على امتحان مقفول ما بتنحسب "تم الفتح" وما بتفتح شي
     document.addEventListener('click', function(e){
       var btn = e.target.closest && e.target.closest('.item-card.is-locked .item-card-btn');

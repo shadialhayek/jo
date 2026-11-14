@@ -467,11 +467,34 @@
       list.forEach(function(m){ if (m.target.classList && m.target.classList.contains('qx-result')) ensureBtn(m.target); });
       refreshCards();
     });
-    document.querySelectorAll('.qx .qx-result').forEach(function(r){
-      mo.observe(r, { attributes: true, attributeFilter: ['hidden'] });
-      ensureBtn(r);
-    });
-    setupCards();
+    // امتحانات الداشبورد بتنبني بعد تحميل الصفحة (site-cms.js)، فبنراقب الصفحة ونجهّز أي كرت/نافذة جديدة
+    function watchResults(){
+      document.querySelectorAll('.qx .qx-result').forEach(function(r){
+        if (r._pdfWatch) { ensureBtn(r); return; }
+        r._pdfWatch = true;
+        mo.observe(r, { attributes: true, attributeFilter: ['hidden'] });
+        ensureBtn(r);
+      });
+    }
+    function setupAll(){
+      cardBtns = cardBtns.filter(function(o){ return document.documentElement.contains(o.btn); });   // نشيل كروت انحذفت/انبنت من جديد
+      watchResults();
+      setupCards();
+    }
+    var setupT = null;
+    function scheduleSetup(){ clearTimeout(setupT); setupT = setTimeout(setupAll, 50); }
+    try {
+      new MutationObserver(function(list){
+        for (var i = 0; i < list.length; i++){
+          var nodes = list[i].addedNodes;
+          for (var j = 0; j < nodes.length; j++){
+            var n = nodes[j];
+            if (n.nodeType === 1 && (n.matches('.item-card, .qx') || n.querySelector('.item-card, .qx'))) { scheduleSetup(); return; }
+          }
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    } catch(e){}
+    setupAll();
     window.__refreshPdfCards = refreshCards;
     document.addEventListener('click', function(){ setTimeout(refreshCards, 60); }, true);
     window.addEventListener('hashchange', refreshCards);
