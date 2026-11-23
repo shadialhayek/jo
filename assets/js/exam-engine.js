@@ -13,6 +13,7 @@
     });
   });
   function exOpen(id){
+    if (EXAMS[id] && EXAMS[id].cx && window.ExamRunner) return window.ExamRunner.open(id);   // واجهة الامتحان الجديدة (امتحانات الداشبورد)
     if (examNeedLogin(function(){ exOpen(id); })) return;
     if (typeof examIsLocked === 'function' && examIsLocked(id)) return;   // لسه ما حان موعده
     const ex = EXAMS[id], d = document.getElementById('ex-' + id);
@@ -28,6 +29,7 @@
     const sv = examGetSaved(id); if (sv){ ex.ans = sv.a; exSubmit(id, true); }
   }
   function exClose(id){
+    if (EXAMS[id] && EXAMS[id].cx && window.ExamRunner) return window.ExamRunner.close(id);
     const g = EXAMS[id].gen || '2010';
     if (location.hash === '#exams/' + g + '/' + id) { try { history.replaceState(history.state, '', '#exams/' + g); } catch(e){} }
     document.getElementById('ex-' + id).hidden = true;

@@ -343,8 +343,10 @@
     plainMath(parent, text.slice(last));
   }
   window.cxMathNodes = mathNodes;
+  window.cxImgSrc = imgSrc;
   function cxBuild(it){
     var id = it.id, qs = it.questions || [], n = qs.length || it.n || 0;
+    window.CX_ITEMS = window.CX_ITEMS || {}; window.CX_ITEMS[id] = it;
     // كرت الامتحان
     var list = document.querySelector('#view-exams .gen-panel[data-gen="' + it.gen + '"] .item-card-list');
     if (list){
@@ -353,7 +355,7 @@
       var body = el('div', 'item-card-body');
       body.appendChild(el('span', 'item-card-badge', it.badge || 'امتحان إلكتروني'));
       body.appendChild(el('h3', '', it.title));
-      body.appendChild(el('p', '', it.desc || (n + ' ' + (n === 1 ? 'سؤال' : n <= 10 ? 'أسئلة' : 'سؤال') + ' اختيار من متعدد — العلامة من ' + n)));
+      body.appendChild(el('p', '', it.desc || (n + ' ' + (n === 1 ? 'سؤال' : n <= 10 ? 'أسئلة' : 'سؤال') + ' اختيار من متعدد — العلامة من ' + n + (it.duration ? ' — المدة ' + it.duration + ' دقيقة' : ''))));
       var cd = el('div', 'exam-cd'); cd.hidden = true;
       cd.appendChild(el('div', 'exam-cd-when', it.opens ? whenText(it.opens) : ''));
       var boxes = el('div', 'exam-cd-boxes'); boxes.setAttribute('aria-live', 'off');
@@ -368,6 +370,12 @@
     // نافذة الامتحان
     var d = el('div', 'qx'); d.id = 'ex-' + id; d.setAttribute('data-nosnippet', ''); d.setAttribute('data-cx', '1');
     d.setAttribute('role', 'dialog'); d.setAttribute('aria-modal', 'true'); d.setAttribute('aria-label', it.title); d.hidden = true;
+    // الواجهة الجديدة: النافذة فاضية وبتنبني لما الطالب يفتح الامتحان (ExamRunner)
+    if (window.ExamRunner){
+      document.body.appendChild(d);
+      EXAMS[id] = { srv: 1, n: n, key: [], notes: [], sheet: it.title, title: it.title, gen: it.gen, cx: 1, ans: [] };
+      return;
+    }
     var wrap = el('div', 'qx-wrap'); d.appendChild(wrap);
     var top = el('div', 'qx-top'); top.appendChild(el('h2', '', it.title));
     var tb = el('div'); tb.style.cssText = 'display:flex;gap:8px';
