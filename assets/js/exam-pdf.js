@@ -7,7 +7,7 @@
     ];
     var libP = null, hiddenEls = [], oldTitle = null;
     var PG_W = 1654, PG_H = 2339;                       // صفحة A4 بدقة ~200dpi
-    var RENDER_W = 520;                                 // عرض الرسم بالبكسل: أضيق = خط وأشكال أكبر وأوضح بالصفحة
+    var RENDER_W = 640;                                 // عرض الرسم بالبكسل: أضيق = خط وأشكال أكبر وأوضح بالصفحة
     var MX = Math.round(8 * PG_W / 210), MY = Math.round(10 * PG_H / 297);
     var CONTENT_W = PG_W - 2 * MX;
     var SCALE = CONTENT_W / RENDER_W;
@@ -131,6 +131,14 @@
       }
       var blocks = [{ el: makePrettyHead(d), review: false }];
       var clone = rv.cloneNode(true);
+      // خيارات قصيرة (أرقام/تعابير) بنعرضها بعمودين عشان السؤال ياخد مساحة أقل ويتّسع أكتر من سؤال بالصفحة
+      Array.prototype.forEach.call(clone.querySelectorAll('.x2-opts:not(.fig)'), function(o){
+        var os = o.children, ok = os.length > 1, i;
+        for (i = 0; i < os.length && ok; i++){
+          if (os[i].querySelector('svg, img, .qx-pw, .qx-frac') || os[i].textContent.replace(/\s+/g, '').length > 18) ok = false;
+        }
+        if (ok) o.classList.add('pdfx-2col');
+      });
       Array.prototype.slice.call(clone.children).forEach(function(c){
         if (c.tagName === 'H3' || c.tagName === 'P') return;
         if (c.classList.contains('qx-q') || c.classList.contains('x2-q') || c.classList.contains('qx-ctx') || !c.children.length) blocks.push({ el: c, review: true });
