@@ -57,6 +57,10 @@
     '.x2-ctx{background:#FFF8E1;border:1px solid #F0D37A;border-radius:12px;padding:12px 14px;margin-bottom:14px;line-height:2;font-size:16px;color:#3A3320;overflow-wrap:anywhere}' +
     '.x2-extra{margin:0 0 14px;overflow-x:auto}' +
     '.x2-qt bdi,.x2-ctx bdi,.x2-opt bdi,.x2-fb bdi{display:inline-block;white-space:nowrap;unicode-bidi:isolate;direction:ltr;font-family:"Noto Sans","Segoe UI","Helvetica Neue",Arial,Cairo,sans-serif}' +
+    '.x2-qt bdi.qx-pw,.x2-ctx bdi.qx-pw,.x2-opt bdi.qx-pw,.x2-fb bdi.qx-pw,.x2-extra bdi.qx-pw{display:inline-flex!important;align-items:center;gap:6px;vertical-align:middle;white-space:normal;margin:2px 4px;text-align:left}' +
+    '.x2-qt .qx-pw .qx-pre,.x2-opt .qx-pw .qx-pre{white-space:nowrap}' +
+    '.x2-qt .qx-pw .qx-brace,.x2-ctx .qx-pw .qx-brace,.x2-opt .qx-pw .qx-brace,.x2-fb .qx-pw .qx-brace{align-self:stretch;height:auto;min-height:34px;width:11px;flex-shrink:0;max-width:none}' +
+    '.x2-qt .qx-pw .qx-rows,.x2-ctx .qx-pw .qx-rows,.x2-opt .qx-pw .qx-rows,.x2-fb .qx-pw .qx-rows{display:grid;grid-template-columns:auto auto;column-gap:10px;row-gap:3px;justify-items:start;align-items:center}' +
     '.x2-qt sup,.x2-opt sup,.x2-ctx sup{font-size:.7em;line-height:0;vertical-align:baseline;position:relative;top:-.55em}' +
     '.x2-qt sub,.x2-opt sub,.x2-ctx sub{font-size:.7em;line-height:0;vertical-align:baseline;position:relative;top:.3em}' +
     '.x2-qt svg,.x2-ctx svg,.x2-extra svg,.x2-opt svg{max-width:100%;height:auto}' +
