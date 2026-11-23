@@ -481,10 +481,20 @@
     }
 
     // ---- زر على بطاقة الامتحان من برا (يظهر فقط للي أنهى الامتحان) ----
+    function hideRunner(id){
+      var d = document.getElementById('ex-' + id);
+      if (d){ d.style.visibility = 'hidden'; d.style.pointerEvents = 'none'; }
+      document.body.style.overflow = '';
+    }
+    function showRunner(id){
+      var d = document.getElementById('ex-' + id);
+      if (d){ d.style.visibility = ''; d.style.pointerEvents = ''; }
+    }
     function openRunnerReview(id){
       return new Promise(function(res, rej){
         var tries = 0, d = null;
         try { window.ExamRunner.open(id); } catch(e){ return rej(e); }
+        hideRunner(id);                                       // التجهيز بالخلفية: ما بنعرض شاشة الامتحان للطالب
         (function wait(){
           d = document.getElementById('ex-' + id);
           if (d && d.querySelector('.x2-score') && d.querySelector('.x2-qs .x2-q')) return res();
@@ -501,8 +511,8 @@
         var id = m[1];
         return { dialog: 'ex-' + id, save: id, cx: true,
           prep: function(){ return openRunnerReview(id); },
-          done: function(){ try { window.ExamRunner.close(id); } catch(e){} },
-          open: function(){ exOpen(id); } };
+          done: function(){ showRunner(id); try { window.ExamRunner.close(id); } catch(e){} },
+          open: function(){ showRunner(id); exOpen(id); } };
       }
       if (m) return { dialog: 'ex-' + m[1], save: m[1], prep: function(sv){ EXAMS[m[1]].ans = sv.a; return exSubmit(m[1], true); }, open: function(){ exOpen(m[1]); } };
       if (/openAngleExam/.test(code)) return { dialog: 'angleExam', save: 'angle', prep: function(sv){ angleAns = sv.a; submitAngleExam(true); }, open: function(){ openAngleExam(); } };
@@ -533,6 +543,7 @@
           pr.then(function(){ return downloadPdf(document.getElementById(desc.dialog), prog(btn)); }).then(function(){ if (desc.done) desc.done(); busy(btn, false); }, function(err){
             try { console.warn(err); } catch(e){}
             busy(btn, false);
+            if (desc.cx) showRunner(desc.save);
             if (desc.cx) { var dd = document.getElementById(desc.dialog); if (dd && dd.querySelector('.x2-score')) { alert('تعذّر تجهيز الملف. اضغط تنزيل PDF من داخل الامتحان وجرّب مرة ثانية.'); return; } }
             alert('تعذّر تنزيل الملف تلقائياً. بنفتحلك الامتحان، اضغط تنزيل PDF من داخله.');
             desc.open();

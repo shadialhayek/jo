@@ -750,5 +750,18 @@
 <script src="assets/js/exam-pdf.js?v=20261123a"></script>
 <script src="assets/js/form-popup.js?v=20261114c"></script>
 <script src="assets/js/site-cms.js?v=20261122a" defer></script>
+<div class="wsv" id="wsViewer" hidden style="z-index:10050">
+  <div class="pdfbar">
+    <span class="pdfbar-page"><b id="wsPageNo">1</b><span class="pdfbar-of">/</span><span id="wsPageTot">1</span></span>
+    <span class="pdfbar-sep"></span>
+    <button type="button" class="pdfbar-ic" onclick="wsZoom(-1)" aria-label="تصغير">−</button>
+    <span class="pdfbar-zoom" id="wsZoomVal">100%</span>
+    <button type="button" class="pdfbar-ic" onclick="wsZoom(1)" aria-label="تكبير">+</button>
+    <span class="wsv-title" id="wsTitle"></span>
+    <button type="button" class="pdfbar-dl" onclick="wsDownload()">⬇ تحميل</button>
+    <button type="button" class="pdfbar-ic pdfbar-x" onclick="wsClose()" aria-label="إغلاق">✕</button>
+  </div>
+  <div class="wsv-body" id="wsBody"></div>
+</div>
 </body>
 </html>
