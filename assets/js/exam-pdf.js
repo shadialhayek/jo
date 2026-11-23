@@ -30,7 +30,7 @@
       }).catch(function(e){ libP = null; throw e; });
       return libP;
     }
-    function titleOf(d){ var h = d.querySelector('.qx-top h2'); return h ? h.textContent.trim() : 'امتحان إلكتروني'; }
+    function titleOf(d){ var h = d.querySelector('.qx-top h2') || d.querySelector('.x2-top h2'); return h ? h.textContent.trim() : 'امتحان إلكتروني'; }
     function userName(){ try { var u = (typeof getSessionUser === 'function') ? getSessionUser() : null; return (u && u.name) ? u.name : ''; } catch(e){ return ''; } }
     function makeHead(d){
       var head = document.createElement('div'); head.className = 'pdf-head';
@@ -88,14 +88,15 @@
     function mk(tag, cls, txt){ var e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
     function makePrettyHead(d){
       var ttl = titleOf(d), parts = ttl.split(/\s*[—–-]\s*/), kick = parts.length > 1 ? parts[0] : 'اختبار إلكتروني', main = parts.length > 1 ? parts.slice(1).join(' — ') : ttl;
-      var who = userName(), sc = d.querySelector('.qx-result .qx-score'), scTxt = sc ? sc.textContent.replace(/\s+/g, ' ').trim() : '';
+      var who = userName(), sc = d.querySelector('.qx-result .qx-score') || d.querySelector('.x2-score'), scTxt = sc ? sc.textContent.replace(/\s+/g, ' ').trim() : '';
       var m = /(\d+(?:\.\d+)?)\s*\/\s*(\d+)/.exec(scTxt), pct = m && +m[2] ? Math.round(100 * (+m[1]) / (+m[2])) : null;
       var col = pct == null ? '#6b7280' : pct >= 80 ? '#1f9d4d' : pct >= 50 ? '#e09a00' : '#d63a3a';
       var note = pct == null ? '' : pct >= 80 ? 'ممتاز، أحسنت!' : pct >= 50 ? 'جيد، راجع الأسئلة التي أخطأت فيها' : 'راجع الدرس وإجاباتك أدناه';
       var date = ''; try { date = new Date().toLocaleDateString('ar-JO', { year: 'numeric', month: 'long', day: 'numeric' }); } catch(e){ date = new Date().toLocaleDateString(); }
-      var rv = d.querySelector('.qx-review');
-      var nOk = rv ? rv.querySelectorAll('.qx-fb.ok').length : 0, nBad = 0, nNo = 0;
-      if (rv) rv.querySelectorAll('.qx-fb.bad').forEach(function(f){ if (/لم تجب/.test(f.textContent)) nNo++; else nBad++; });
+      var rv = d.querySelector('.qx-review') || d.querySelector('.x2-qs');
+      var nOk = 0, nBad = 0, nNo = 0;
+      if (rv) rv.querySelectorAll('.qx-fb.ok, .x2-fb.ok').forEach(function(f){ if (f.classList.contains('x2-fb') && !/✓/.test(f.textContent)) return; nOk++; });
+      if (rv) rv.querySelectorAll('.qx-fb.bad, .x2-fb.bad').forEach(function(f){ if (/لم تجب/.test(f.textContent)) nNo++; else nBad++; });
 
       var head = mk('div', 'pdfx-head');
       var ban = mk('div', 'pdfx-banner');
@@ -124,12 +125,15 @@
     // نقسم النتيجة لقطع: الترويسة + كل سؤال لحاله
     function buildBlocks(d){
       var rv = d.querySelector('.qx-review');
-      if (!rv || !rv.querySelector('.qx-q')) return null;
+      if (!rv || !rv.querySelector('.qx-q')){
+        rv = d.querySelector('.x2-qs');                       // واجهة الامتحان الجديدة (امتحانات الداشبورد)
+        if (!rv || !rv.querySelector('.x2-q')) return null;
+      }
       var blocks = [{ el: makePrettyHead(d), review: false }];
       var clone = rv.cloneNode(true);
       Array.prototype.slice.call(clone.children).forEach(function(c){
         if (c.tagName === 'H3' || c.tagName === 'P') return;
-        if (c.classList.contains('qx-q') || c.classList.contains('qx-ctx') || !c.children.length) blocks.push({ el: c, review: true });
+        if (c.classList.contains('qx-q') || c.classList.contains('x2-q') || c.classList.contains('qx-ctx') || !c.children.length) blocks.push({ el: c, review: true });
         else Array.prototype.slice.call(c.children).forEach(function(k){ blocks.push({ el: k, review: true }); });   // حاوية الأسئلة → كل سؤال لحاله
       });
       return blocks;
@@ -477,9 +481,29 @@
     }
 
     // ---- زر على بطاقة الامتحان من برا (يظهر فقط للي أنهى الامتحان) ----
+    function openRunnerReview(id){
+      return new Promise(function(res, rej){
+        var tries = 0, d = null;
+        try { window.ExamRunner.open(id); } catch(e){ return rej(e); }
+        (function wait(){
+          d = document.getElementById('ex-' + id);
+          if (d && d.querySelector('.x2-score') && d.querySelector('.x2-qs .x2-q')) return res();
+          if (++tries > 80) return rej(new Error('timeout'));
+          setTimeout(wait, 250);
+        })();
+      });
+    }
     function descFromCode(code){
       code = code || '';
       var m = /exOpen\('([\w-]+)'\)/.exec(code);
+      if (m && typeof EXAMS !== 'undefined' && EXAMS[m[1]] && EXAMS[m[1]].cx && window.ExamRunner){
+        // امتحانات الداشبورد: بنفتح المراجعة (من السيرفر) ونستنى تظهر الأسئلة، وبعدين بننزّل الـPDF
+        var id = m[1];
+        return { dialog: 'ex-' + id, save: id, cx: true,
+          prep: function(){ return openRunnerReview(id); },
+          done: function(){ try { window.ExamRunner.close(id); } catch(e){} },
+          open: function(){ exOpen(id); } };
+      }
       if (m) return { dialog: 'ex-' + m[1], save: m[1], prep: function(sv){ EXAMS[m[1]].ans = sv.a; return exSubmit(m[1], true); }, open: function(){ exOpen(m[1]); } };
       if (/openAngleExam/.test(code)) return { dialog: 'angleExam', save: 'angle', prep: function(sv){ angleAns = sv.a; submitAngleExam(true); }, open: function(){ openAngleExam(); } };
       if (/openPwExam/.test(code)) return { dialog: 'pwExam', save: 'piecewise', prep: function(sv){ pwAns = sv.a; submitPwExam(true); }, open: function(){ openPwExam(); } };
@@ -505,10 +529,11 @@
           var sv = null; try { sv = examGetSaved(desc.save); } catch(err){}
           if (!sv){ refreshCards(); return; }
           busy(btn, true);
-          var pr; try { pr = Promise.resolve(desc.prep(sv)); } catch(err){ busy(btn, false); return; }
-          pr.then(function(){ return downloadPdf(document.getElementById(desc.dialog), prog(btn)); }).then(function(){ busy(btn, false); }, function(err){
+          var pr; try { pr = Promise.resolve(desc.prep(sv)); } catch(err){ try { console.warn(err); } catch(e){} busy(btn, false); alert('تعذّر تنزيل الملف تلقائياً. بنفتحلك الامتحان، اضغط تنزيل PDF من داخله.'); desc.open(); return; }
+          pr.then(function(){ return downloadPdf(document.getElementById(desc.dialog), prog(btn)); }).then(function(){ if (desc.done) desc.done(); busy(btn, false); }, function(err){
             try { console.warn(err); } catch(e){}
             busy(btn, false);
+            if (desc.cx) { var dd = document.getElementById(desc.dialog); if (dd && dd.querySelector('.x2-score')) { alert('تعذّر تجهيز الملف. اضغط تنزيل PDF من داخل الامتحان وجرّب مرة ثانية.'); return; } }
             alert('تعذّر تنزيل الملف تلقائياً. بنفتحلك الامتحان، اضغط تنزيل PDF من داخله.');
             desc.open();
           });
@@ -553,6 +578,15 @@
     } catch(e){}
     setupAll();
     window.__refreshPdfCards = refreshCards;
+    // زر «تنزيل PDF» داخل صفحة النتيجة بالواجهة الجديدة (exam-runner.js)
+    window.__examPdfDownload = function(d, btn){
+      busy(btn, true);
+      downloadPdf(d, prog(btn)).then(function(){ busy(btn, false); }, function(err){
+        try { console.warn(err); } catch(e){}
+        busy(btn, false);
+        alert('تعذّر تجهيز الملف. تأكد من الإنترنت وجرّب مرة ثانية.');
+      });
+    };
     document.addEventListener('click', function(){ setTimeout(refreshCards, 60); }, true);
     window.addEventListener('hashchange', refreshCards);
     window.addEventListener('popstate', refreshCards);

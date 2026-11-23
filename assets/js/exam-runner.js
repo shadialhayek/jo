@@ -209,8 +209,11 @@
       list.appendChild(card);
     });
     box.appendChild(list);
-    var cl = el('button', 'x2-btn', 'إغلاق'); cl.type = 'button'; cl.style.marginTop = '18px'; cl.onclick = function () { close(id); };
-    box.appendChild(cl); d.appendChild(box);
+    var row = el('div'); row.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;margin-top:18px';
+    var pdfb = el('button', 'x2-btn ghost', '📄 تنزيل PDF'); pdfb.type = 'button';
+    pdfb.onclick = function () { if (window.__examPdfDownload) window.__examPdfDownload(d, pdfb); else alert('حدّث الصفحة وجرّب مرة ثانية.'); };
+    var cl = el('button', 'x2-btn', 'إغلاق'); cl.type = 'button'; cl.onclick = function () { close(id); };
+    row.appendChild(pdfb); row.appendChild(cl); box.appendChild(row); d.appendChild(box);
   }
 
   function submit(id, auto) {
