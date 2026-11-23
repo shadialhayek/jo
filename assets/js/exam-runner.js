@@ -54,11 +54,20 @@
     '.x2-res{max-width:860px;margin:30px auto;padding:0 16px}' +
     '.x2-score{text-align:center;font-size:56px;font-weight:900;color:#1E3F8F;direction:ltr}.x2-score small{font-size:24px;color:#6A768F}' +
     '.x2-fb{margin-top:10px;font-size:14px;padding:8px 12px;border-radius:10px}.x2-fb.ok{background:#EAF8F0;color:#157A44}.x2-fb.bad{background:#FDEEEE;color:#B02A2F}.x2-fb.note{background:#F3F5FA;color:#3B4A6B}' +
+    '.x2-ctx{background:#FFF8E1;border:1px solid #F0D37A;border-radius:12px;padding:12px 14px;margin-bottom:14px;line-height:2;font-size:16px;color:#3A3320;overflow-wrap:anywhere}' +
+    '.x2-extra{margin:0 0 14px;overflow-x:auto}' +
+    '.x2-qt bdi,.x2-ctx bdi,.x2-opt bdi,.x2-fb bdi{display:inline-block;white-space:nowrap;unicode-bidi:isolate;direction:ltr;font-family:"Noto Sans","Segoe UI","Helvetica Neue",Arial,Cairo,sans-serif}' +
+    '.x2-qt sup,.x2-opt sup,.x2-ctx sup{font-size:.7em;line-height:0;vertical-align:baseline;position:relative;top:-.55em}' +
+    '.x2-qt sub,.x2-opt sub,.x2-ctx sub{font-size:.7em;line-height:0;vertical-align:baseline;position:relative;top:.3em}' +
+    '.x2-qt svg,.x2-ctx svg,.x2-extra svg,.x2-opt svg{max-width:100%;height:auto}' +
+    '.x2-opts.fig{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.x2-opts.fig .x2-opt{flex-direction:column}' +
     '@media(max-width:900px){.x2-main{grid-template-columns:1fr;padding:12px}.x2-side{position:static}.x2-q{padding:16px}.x2-qh h3{font-size:19px}}';
   var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
 
   function el(t, c, x) { var e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; }
   function math(p, t) { if (window.cxMathNodes) window.cxMathNodes(p, t); else p.appendChild(document.createTextNode(t || '')); }
+  function fill(t, v) { if (v && typeof v === 'object') t.innerHTML = v.html; else math(t, v); }      // الامتحانات القديمة: خيارات HTML جاهزة
+  function dlgOf(id) { var it = (window.CX_ITEMS || {})[id]; return document.getElementById(it && it.dlg ? it.dlg : 'ex-' + id); }
   function pad(n) { return (n < 10 ? '0' : '') + n; }
   function fmt(ms) {
     var s = Math.max(0, Math.round(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
@@ -97,7 +106,9 @@
       if (s.flag[qi]) f.classList.add('on'); h.appendChild(f);
     }
     card.appendChild(h);
-    var t = el('div', 'x2-qt'); math(t, q.text); card.appendChild(t);
+    if (q.ctx) { var cb = el('div', 'x2-ctx'); cb.innerHTML = q.ctx; card.appendChild(cb); }
+    var t = el('div', 'x2-qt'); if (q.html != null) t.innerHTML = q.html; else math(t, q.text); card.appendChild(t);
+    if (q.extra) { var xb = el('div', 'x2-extra'); xb.innerHTML = q.extra; card.appendChild(xb); }
     var src = window.cxImgSrc && q.img ? cxImgSrc(q.img) : '';
     if (src) { var im = el('img', 'x2-img'); im.src = src; im.alt = 'صورة السؤال ' + (qi + 1); im.loading = 'lazy'; card.appendChild(im); }
     return card;
@@ -148,10 +159,10 @@
     var qs = el('div', 'x2-qs');
     it.questions.forEach(function (q, qi) {
       var card = qBody(it, q, qi, 'exam', s);
-      var os = el('div', 'x2-opts');
+      var os = el('div', 'x2-opts' + (q.fig ? ' fig' : ''));
       q.opts.forEach(function (o, oi) {
         var b = el('button', 'x2-opt'); b.type = 'button'; b.appendChild(el('span', 'x2-r'));
-        var t = el('span', 'x2-t2'); math(t, o); b.appendChild(t);
+        var t = el('span', 'x2-t2'); fill(t, o); b.appendChild(t);
         if (s.ans[qi] === LET[oi]) b.classList.add('sel');
         b.onclick = function () {
           s.ans[qi] = LET[oi];
@@ -192,10 +203,10 @@
     var list = el('div', 'x2-qs'); list.style.marginTop = '18px';
     it.questions.forEach(function (q, qi) {
       var card = qBody(it, q, qi, 'review', null), key = r.key[qi], my = mine ? mine[qi] : '';
-      var os = el('div', 'x2-opts');
+      var os = el('div', 'x2-opts' + (q.fig ? ' fig' : ''));
       q.opts.forEach(function (o, oi) {
         var b = el('button', 'x2-opt'); b.type = 'button'; b.disabled = true; b.appendChild(el('span', 'x2-r'));
-        var t = el('span'); math(t, o); b.appendChild(t);
+        var t = el('span'); fill(t, o); b.appendChild(t);
         if (LET[oi] === key) b.classList.add('ok'); else if (mine && LET[oi] === my) b.classList.add('bad');
         os.appendChild(b);
       });
@@ -218,6 +229,7 @@
 
   function submit(id, auto) {
     var s = ST[id]; if (!s || s.busy) return;
+    if (s.it.local) return submitLocal(id, auto);
     var it = s.it, n = it.questions.length, left = 0, answers = [];
     for (var i = 0; i < n; i++) { answers.push(s.ans[i] || ''); if (!s.ans[i]) left++; }
     if (!auto && left && !confirm('بقي ' + left + ' سؤال بلا إجابة. هل تريد إنهاء الاختبار؟')) { s.msg.textContent = 'أجب عن جميع الأسئلة قبل الإنهاء.'; return; }
@@ -234,7 +246,7 @@
     });
   }
   function finish(id, r, answers) {
-    var it = (window.CX_ITEMS || {})[id], d = document.getElementById('ex-' + id);
+    var it = (window.CX_ITEMS || {})[id], d = dlgOf(id);
     var E = window.EXAMS && EXAMS[id]; if (E) { E.key = r.key; E.notes = r.notes || []; E.srvReady = true; }
     var mine = r.answers || null;
     try { if (mine) examSetSaved(id, mine, r.key.length); else examMirrorServer(id, { score: r.score, max: r.max }); examSyncSaved(true); } catch (e) {}
@@ -242,6 +254,7 @@
   }
 
   function review(id, d, it) {
+    if (it.local) return reviewLocal(id, d, it);
     var A = window.StudentAccount;
     if (!A || typeof A.call !== 'function') { err(d, it, 'تعذّر الاتصال بالسيرفر، حدّث الصفحة.'); return; }
     A.call('POST', '/api/me/exam-submit', { id: id }).then(function (r) {
@@ -260,12 +273,13 @@
   function open(id, again) {
     if (!again && typeof examNeedLogin === 'function' && examNeedLogin(function () { open(id); })) return;
     if (typeof examIsLocked === 'function' && examIsLocked(id)) return;
-    var it = (window.CX_ITEMS || {})[id], d = document.getElementById('ex-' + id);
+    var it = (window.CX_ITEMS || {})[id], d = dlgOf(id);
     if (!it || !d || !it.questions) return;
     try { history.replaceState(history.state, '', '#exams/' + (it.gen || '2010') + '/' + id); } catch (e) {}
     d.className = 'qx qx2'; d.innerHTML = ''; d.hidden = false; document.body.style.overflow = 'hidden';
     d.appendChild(header(d, it, null)); d.appendChild(el('div', 'x2-res')).appendChild(el('div', 'x2-card', 'جاري التحضير…')).style.textAlign = 'center';
     if (typeof examGetSaved === 'function' && examGetSaved(id)) return review(id, d, it);
+    if (it.local) return start(id, d, it, { startedAt: 1, deadline: 0, now: Date.now() });   // الامتحانات القديمة: بدون سيرفر ولا عدّاد
     var A = window.StudentAccount;
     if (!A || typeof A.call !== 'function') return err(d, it, 'تعذّر الاتصال بالسيرفر، حدّث الصفحة وجرّب مرة ثانية.');
     A.call('POST', '/api/me/exam-start', { id: id }).then(function (r) {
@@ -276,10 +290,93 @@
   }
   function close(id) {
     var s = ST[id]; if (s && s.timer) clearInterval(s.timer); delete ST[id];
-    var it = (window.CX_ITEMS || {})[id], g = (it && it.gen) || '2010', d = document.getElementById('ex-' + id);
+    var it = (window.CX_ITEMS || {})[id], g = (it && it.gen) || '2010', d = dlgOf(id);
     if (location.hash === '#exams/' + g + '/' + id) { try { history.replaceState(history.state, '', '#exams/' + g); } catch (e) {} }
     if (d) { d.hidden = true; d.innerHTML = ''; }
     document.body.style.overflow = '';
   }
+
+  // ===== الامتحانات القديمة (2009 / 2010 / 2011): نفس الواجهة الجديدة، لكن التصحيح والحفظ بنفس الطريقة القديمة =====
+  function localScore(it, ans) { var sc = 0; for (var i = 0; i < it.key.length; i++) if (ans && ans[i] === it.key[i]) sc++; return sc; }
+  function reviewLocal(id, d, it) {
+    var sv = (typeof examGetSaved === 'function') ? examGetSaved(id) : null;
+    if (!sv) return open(id, true);
+    var n = it.key.length, noAns = !!sv.ns, mine = noAns ? null : (sv.a || []);
+    result(id, d, it, { score: noAns ? (sv.sc || 0) : localScore(it, mine), max: n, key: it.key, notes: it.notes || [] }, mine);
+  }
+  function submitLocal(id, auto) {
+    var s = ST[id]; if (!s || s.busy) return;
+    var it = s.it, n = it.key.length, left = 0, answers = [];
+    for (var i = 0; i < n; i++) { answers.push(s.ans[i] || ''); if (!s.ans[i]) left++; }
+    if (typeof examGetSaved === 'function' && examGetSaved(id)) return reviewLocal(id, s.root, it);
+    if (typeof examNeedLogin === 'function' && examNeedLogin()) return;
+    if (!auto && left && !confirm('بقي ' + left + ' سؤال بلا إجابة. هل تريد إنهاء الاختبار؟')) { s.msg.textContent = 'أجب عن جميع الأسئلة قبل الإنهاء.'; return; }
+    var score = localScore(it, answers);
+    s.busy = true;
+    try {
+      examSetSaved(id, answers, n);
+      var u = getSessionUser() || {};
+      sendToSheet({
+        'المصدر': 'امتحان إلكتروني', 'الاسم': u.name || '', 'الجوال': u.phone || '', 'الجيل/الفرع': u.track || '',
+        'الحالة': 'أنهى الامتحان', 'الرسالة': it.sheet, 'العلامة': score + ' / ' + n, 'التاريخ': new Date().toLocaleString('ar-JO')
+      }).catch(function (err) { console.warn('تعذر إرسال العلامة للشيت:', err); });
+    } catch (err) { console.warn(err); }
+    try { if (typeof examReconcileCards === 'function') setTimeout(examReconcileCards, 0); } catch (e) {}
+    dropDraft(id);
+    result(id, s.root, it, { score: score, max: n, key: it.key, notes: it.notes || [] }, answers);
+    s.busy = false;
+  }
+  // نقرأ أسئلة الامتحان القديم من الصفحة (مرة وحدة) ونحوّلها لنفس شكل امتحانات الداشبورد
+  function legacyBuild(id, dlg, qSel, key, sheet, title, gen) {
+    var d = document.getElementById(dlg), box = d && d.querySelector(qSel);
+    if (!box || !key || !key.length) return false;
+    var qs = [], ctxs = [];
+    Array.prototype.forEach.call(box.children, function (c) {
+      if (c.classList.contains('qx-ctx')) {
+        var txt = c.textContent, head = txt.split(':')[0], nums = [], m, re = /\((\d+)\)/g;
+        while ((m = re.exec(head))) nums.push(+m[1]);
+        if (/إلى/.test(head) && nums.length === 2) { var all = []; for (var k = nums[0]; k <= nums[1]; k++) all.push(k); nums = all; }
+        ctxs.push({ html: c.innerHTML, nums: nums });
+        return;
+      }
+      if (!c.classList.contains('qx-q')) return;
+      var b = null, ob = null, extra = '';
+      Array.prototype.forEach.call(c.children, function (k) {
+        if (k.tagName === 'B' && !b) b = k; else if (k.classList.contains('qx-opts')) ob = k; else extra += k.outerHTML;
+      });
+      var nEl = b && b.querySelector('.qx-n'), num = nEl ? +nEl.textContent : qs.length + 1, bc = b ? b.cloneNode(true) : null;
+      if (bc) { var nn = bc.querySelector('.qx-n'); if (nn) nn.remove(); }
+      var opts = [];
+      if (ob) Array.prototype.forEach.call(ob.querySelectorAll('.qx-opt'), function (btn) {
+        var t = btn.querySelector('.qx-t');
+        if (t) opts.push({ html: t.innerHTML });
+        else { var cl = btn.cloneNode(true), l = cl.querySelector('.qx-l'); if (l) l.remove(); opts.push({ html: cl.innerHTML }); }
+      });
+      var ctx = '';
+      ctxs.forEach(function (x) { if (x.nums.indexOf(num) >= 0) ctx = x.html; });
+      qs.push({ html: bc ? bc.innerHTML : '', extra: extra, ctx: ctx, opts: opts, fig: !!(ob && ob.classList.contains('fig')) });
+    });
+    if (qs.length !== key.length) return false;
+    window.CX_ITEMS = window.CX_ITEMS || {};
+    window.CX_ITEMS[id] = { id: id, title: title, gen: gen || '2010', questions: qs, key: key.slice(), sheet: sheet || title, local: true, dlg: dlg };
+    return true;
+  }
+  (function legacyInit() {
+    try {
+      if (typeof EXAMS === 'undefined') return;
+      Object.keys(EXAMS).forEach(function (id) {
+        var e = EXAMS[id]; if (e.cx || e.srv || !e.key) return;
+        if (legacyBuild(id, 'ex-' + id, '.ex-questions', e.key, e.sheet, e.title, e.gen)) e.lg = true;
+      });
+      if (typeof ANGLE_KEY !== 'undefined' && legacyBuild('angle', 'angleExam', '#qxQuestions', ANGLE_KEY, 'امتحان قياس الزاوية بالراديان (الوحدة الثانية 2010)', 'امتحان قياس الزاوية بالراديان', '2010')) {
+        window.openAngleExam = function () { return open('angle'); };
+        window.closeAngleExam = function () { return close('angle'); };
+      }
+      if (typeof PW_KEY !== 'undefined' && legacyBuild('piecewise', 'pwExam', '#pwQuestions', PW_KEY, 'اختبار الدرس الأول — الاقترانات المتشعبة (الوحدة الأولى 2010)', 'اختبار الدرس الأول — الاقترانات المتشعبة', '2010')) {
+        window.openPwExam = function () { return open('piecewise'); };
+        window.closePwExam = function () { return close('piecewise'); };
+      }
+    } catch (e) { try { console.warn('legacy exams', e); } catch (x) {} }
+  })();
   window.ExamRunner = { open: open, close: close };
 })();

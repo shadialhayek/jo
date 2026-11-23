@@ -481,13 +481,14 @@
     }
 
     // ---- زر على بطاقة الامتحان من برا (يظهر فقط للي أنهى الامتحان) ----
+    function dlgId(id){ var it = (window.CX_ITEMS || {})[id]; return it && it.dlg ? it.dlg : 'ex-' + id; }
     function hideRunner(id){
-      var d = document.getElementById('ex-' + id);
+      var d = document.getElementById(dlgId(id));
       if (d){ d.style.visibility = 'hidden'; d.style.pointerEvents = 'none'; }
       document.body.style.overflow = '';
     }
     function showRunner(id){
-      var d = document.getElementById('ex-' + id);
+      var d = document.getElementById(dlgId(id));
       if (d){ d.style.visibility = ''; d.style.pointerEvents = ''; }
     }
     function openRunnerReview(id){
@@ -496,7 +497,7 @@
         try { window.ExamRunner.open(id); } catch(e){ return rej(e); }
         hideRunner(id);                                       // التجهيز بالخلفية: ما بنعرض شاشة الامتحان للطالب
         (function wait(){
-          d = document.getElementById('ex-' + id);
+          d = document.getElementById(dlgId(id));
           if (d && d.querySelector('.x2-score') && d.querySelector('.x2-qs .x2-q')) return res();
           if (++tries > 80) return rej(new Error('timeout'));
           setTimeout(wait, 250);
@@ -506,14 +507,19 @@
     function descFromCode(code){
       code = code || '';
       var m = /exOpen\('([\w-]+)'\)/.exec(code);
-      if (m && typeof EXAMS !== 'undefined' && EXAMS[m[1]] && EXAMS[m[1]].cx && window.ExamRunner){
-        // امتحانات الداشبورد: بنفتح المراجعة (من السيرفر) ونستنى تظهر الأسئلة، وبعدين بننزّل الـPDF
-        var id = m[1];
-        return { dialog: 'ex-' + id, save: id, cx: true,
+      function runnerDesc(id, openFn){
+        // الواجهة الجديدة (الداشبورد + الامتحانات القديمة): بنفتح المراجعة بالخلفية ونستنى تظهر الأسئلة، وبعدين بننزّل الـPDF
+        return { dialog: dlgId(id), save: id, cx: true,
           prep: function(){ return openRunnerReview(id); },
           done: function(){ showRunner(id); try { window.ExamRunner.close(id); } catch(e){} },
-          open: function(){ showRunner(id); exOpen(id); } };
+          open: function(){ showRunner(id); openFn(); } };
       }
+      var NEW = window.ExamRunner && window.CX_ITEMS;
+      if (m && NEW && typeof EXAMS !== 'undefined' && EXAMS[m[1]] && (EXAMS[m[1]].cx || EXAMS[m[1]].lg)){
+        var id = m[1]; return runnerDesc(id, function(){ exOpen(id); });
+      }
+      if (NEW && /openAngleExam/.test(code) && window.CX_ITEMS.angle) return runnerDesc('angle', function(){ openAngleExam(); });
+      if (NEW && /openPwExam/.test(code) && window.CX_ITEMS.piecewise) return runnerDesc('piecewise', function(){ openPwExam(); });
       if (m) return { dialog: 'ex-' + m[1], save: m[1], prep: function(sv){ EXAMS[m[1]].ans = sv.a; return exSubmit(m[1], true); }, open: function(){ exOpen(m[1]); } };
       if (/openAngleExam/.test(code)) return { dialog: 'angleExam', save: 'angle', prep: function(sv){ angleAns = sv.a; submitAngleExam(true); }, open: function(){ openAngleExam(); } };
       if (/openPwExam/.test(code)) return { dialog: 'pwExam', save: 'piecewise', prep: function(sv){ pwAns = sv.a; submitPwExam(true); }, open: function(){ openPwExam(); } };
