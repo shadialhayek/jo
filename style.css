@@ -451,8 +451,6 @@
   .qx-score small{font-size:1.8rem; color:#9BA6BC;}
   .qx-result p{color:#9BA6BC; margin-bottom:22px;}
 .qx-pw{display:inline-flex; align-items:center; gap:6px; vertical-align:middle; margin:2px 4px; text-align:left;}
-/* القاعدة العامة .qx-q bdi[dir=ltr]{display:inline-block} كانت بتغلب display:inline-flex وبتكسر القوس { عن الأسطر */
-bdi.qx-pw, .qx-q bdi.qx-pw[dir="ltr"], .qx-opt bdi.qx-pw, .qx-fb bdi.qx-pw{display:inline-flex !important; white-space:normal;}
 .qx-pw .qx-pre{white-space:nowrap;}
 .qx-pw .qx-brace{align-self:stretch; height:auto; min-height:34px; flex-shrink:0;}
 .qx-rows{display:grid; grid-template-columns:auto auto; column-gap:10px; row-gap:3px; justify-items:start; align-items:center;}
@@ -752,6 +750,13 @@ bdi.qx-pw, .qx-q bdi.qx-pw[dir="ltr"], .qx-opt bdi.qx-pw, .qx-fb bdi.qx-pw{displ
   .pdfx .qx-frac > span{display:block !important; min-height:0 !important; line-height:1.5 !important; padding-top:2px !important; padding-bottom:2px !important;}
   .pdfx .qx-frac > span:first-child{border-bottom:1.5px solid #000 !important;}
   .pdfx .qx-rad{display:inline !important; line-height:inherit !important;}
+  /* ===== PDF: ثبات المعادلات والصناديق (x2 = واجهة الامتحان الجديدة) ===== */
+  .pdfx img.pdfx-m{display:inline-block !important; margin:0 !important; padding:0 !important; border:0 !important; border-radius:0 !important; max-width:none !important; max-height:none !important;}
+  .pdfx .x2-q{margin:0 0 14px !important; box-shadow:none !important; page-break-inside:avoid; break-inside:avoid;}
+  .pdfx .x2-qt, .pdfx .x2-ctx{line-height:2 !important;}
+  .pdfx .x2-opt{line-height:1.7 !important; min-height:52px; opacity:1 !important;}
+  .pdfx .x2-fb{line-height:1.9 !important; padding:10px 14px !important; margin-top:12px; overflow:visible !important;}
+
 
   .wsv{background:#525659;}
   .pdfbar{display:flex; align-items:center; gap:8px; direction:ltr; padding:8px 12px; background:#323639; color:#fff; box-shadow:0 2px 6px rgba(0,0,0,.4); font-family:'Cairo',sans-serif;}
