@@ -145,6 +145,7 @@
     var MPX = 4;                       // دقة صورة المعادلة (الصورة بتنصغّر عند التركيب، فبتطلع حادة)
     var MAXIS = 0.3;                   // ارتفاع محور الرياضيات (وسط علامة − وخط الكسر) فوق خط الأساس، بوحدة حجم الخط
     var mctx = document.createElement('canvas').getContext('2d');
+    var MIMG = 'display:inline-block !important;margin:0 !important;padding:0 !important;border:0 !important;border-radius:0 !important;max-width:none !important;max-height:none !important;float:none !important;background:none !important;box-shadow:none !important;';
 
     function mFont(st){ return (st.it ? 'italic ' : '') + (st.bold ? '700 ' : '400 ') + st.size + 'px ' + MFAM; }
     function mCopy(st, o){ var r = {}, k; for (k in st) r[k] = st[k]; for (k in o) r[k] = o[k]; return r; }
@@ -285,7 +286,9 @@
       var x = cv.getContext('2d'); x.scale(MPX, MPX);
       box.draw(x, P, P + box.a);
       var img = document.createElement('img'); img.alt = ''; img.src = cv.toDataURL('image/png');
-      img.setAttribute('style', 'display:inline-block;width:' + W + 'px;height:' + Hh + 'px;vertical-align:' + (-(Hh - P - box.a)) + 'px;');
+      img.className = 'pdfx-m';
+      // مهم: قاعدة .x2-qt img بالامتحان بتحط margin:12px auto + display:block، فكانت ترفع المعادلة لفوق وتوسّع السطر. نلغيها بـ!important
+      img.setAttribute('style', MIMG + 'width:' + W + 'px;height:' + Hh + 'px;vertical-align:' + (-(Hh - P - box.a)) + 'px;');
       cv.width = cv.height = 0;
       return img;
     }
@@ -352,7 +355,8 @@
         return Promise.all(nodes.map(function(n){
           return texToPng(n.getAttribute('data-tex'), fs, n.getAttribute('data-display') === '1').then(function(r){
             var img = document.createElement('img'); img.src = r.url; img.alt = '';
-            img.setAttribute('style', 'display:inline-block;max-width:none;width:' + r.w + 'px;height:' + r.h + 'px;vertical-align:' + r.va + 'px;margin:0 2px;');
+            img.className = 'pdfx-m';
+            img.setAttribute('style', MIMG + 'width:' + r.w + 'px;height:' + r.h + 'px;vertical-align:' + r.va + 'px;margin:0 2px !important;');
             var w = document.createElement('bdi'); w.setAttribute('dir', 'ltr'); w.setAttribute('style', 'white-space:nowrap;'); w.appendChild(img);
             n.parentNode.replaceChild(w, n);
           }).catch(function(e){ try { console.warn('tex fallback', e); } catch(_){} });
@@ -362,11 +366,12 @@
     function ensureMathFonts(){
       try {
         if (!document.fonts || !document.fonts.load) return Promise.resolve();
-        var T = 'πθ−×∘≤≥∈∞0123456789abcxyzsin';
+        var T = 'πθ−×∘≤≥∈∞0123456789abcxyzsin', AR = 'السؤال الإجابة الصحيحة جد باقي قسمة اقتران مجال ✓✗';
         return Promise.race([
-          Promise.all(['400 20px "Noto Sans"', '700 20px "Noto Sans"', 'italic 400 20px "Noto Sans"', 'italic 700 20px "Noto Sans"'].map(function(f){ return document.fonts.load(f, T); })),
-          new Promise(function(r){ setTimeout(r, 4000); })
-        ]).catch(function(){});
+          Promise.all(['400 20px "Noto Sans"', '700 20px "Noto Sans"', 'italic 400 20px "Noto Sans"', 'italic 700 20px "Noto Sans"'].map(function(f){ return document.fonts.load(f, T); })
+            .concat(['400 20px Cairo', '700 20px Cairo', '800 20px Cairo', '900 20px Cairo'].map(function(f){ return document.fonts.load(f, AR); }))),
+          new Promise(function(r){ setTimeout(r, 6000); })
+        ]).then(function(){ return document.fonts.ready; }).catch(function(){});
       } catch(e){ return Promise.resolve(); }
     }
 
@@ -375,7 +380,7 @@
       var host = document.createElement('div'); host.className = 'pdfx-overlay';
       host.setAttribute('style', 'position:fixed;left:0;top:0;right:0;bottom:0;overflow:hidden;opacity:0;pointer-events:none;z-index:-1;');
       var box = document.createElement('div');
-      box.setAttribute('style', 'position:absolute;left:0;top:0;width:' + RENDER_W + 'px;height:auto;background:#fff;font-size:17px;');
+      box.setAttribute('style', 'position:absolute;left:0;top:0;width:' + RENDER_W + 'px;height:auto;background:#fff;font-size:17px;padding:0 0 8px;overflow:visible;');
       var doc = document.createElement('div'); doc.className = 'pdfx'; doc.setAttribute('dir', 'rtl');
       doc.appendChild(b.el);
       box.appendChild(doc); host.appendChild(box); document.body.appendChild(host);
@@ -389,9 +394,16 @@
         });
       }).then(function(c){ done(); return c; }, function(e){ done(); throw e; });
     }
-    function newPage(){
+    function newPage(n){
       var c = document.createElement('canvas'); c.width = PG_W; c.height = PG_H;
       var x = c.getContext('2d'); x.fillStyle = '#ffffff'; x.fillRect(0, 0, PG_W, PG_H);
+      // تذييل بسيط: اسم الأستاذ + رقم الصفحة (بدون ما ياخد من مساحة الأسئلة)
+      try {
+        x.fillStyle = '#9aa3b8'; x.font = "700 24px Cairo, Tajawal, 'Noto Sans', sans-serif"; x.textAlign = 'center'; x.textBaseline = 'alphabetic';
+        if ('direction' in x) x.direction = 'rtl';
+        x.fillText('الأستاذ شادي الحايك  •  صفحة ' + (n || 1), PG_W / 2, PG_H - Math.round(MY * 0.45));
+        x.textAlign = 'left'; if ('direction' in x) x.direction = 'ltr';
+      } catch(e){}
       return { c: c, x: x, y: MY };
     }
     function pageToJpeg(pg){
@@ -405,7 +417,7 @@
     function buildPages(d, onProgress){
       var blocks = buildBlocks(d);
       if (!blocks) return Promise.reject(new Error('لا توجد نتيجة'));
-      var jpegs = [], pg = newPage(), i = 0, n = blocks.length, availH = PG_H - 2 * MY;
+      var jpegs = [], pg = newPage(1), i = 0, n = blocks.length, availH = PG_H - 2 * MY - 20;
       function step(){
         if (i >= n){ jpegs.push(pageToJpeg(pg)); return jpegs; }
         if (onProgress) onProgress(i + 1, n);
@@ -414,7 +426,7 @@
           if (c.width && c.height){
             var w = CONTENT_W, h = Math.round(c.height * (w / c.width));
             if (h > availH){ w = Math.round(w * availH / h); h = availH; }
-            if (pg.y > MY && pg.y + h > PG_H - MY){ jpegs.push(pageToJpeg(pg)); pg = newPage(); }
+            if (pg.y > MY && pg.y + h > PG_H - MY - 20){ jpegs.push(pageToJpeg(pg)); pg = newPage(jpegs.length + 1); }
             pg.x.drawImage(c, 0, 0, c.width, c.height, MX + Math.round((CONTENT_W - w) / 2), pg.y, w, h);
             pg.y += h;
           }
