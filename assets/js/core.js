@@ -102,19 +102,34 @@
   }
 
   // ===== سؤال بطاقة الأستاذ: بوب أب بعد 10 ثواني من تسجيل الدخول =====
-  const CARD_POPUP_DELAY_MS = 10000;
-  const CARD_QUESTION = 'هل تمتلك بطاقة الأستاذ شادي الحايك؟';
+  // الإعدادات (النصوص، التأخير، تشغيل/إيقاف، الفئة) بتيجي من الداشبورد عبر site-cms.js (window.CardPopupConfig).
+  // لو ما وصلت، بتضل هاي القيم الافتراضية (نفس الشكل القديم).
+  const CARD_DEFAULTS = {
+    on: true, mandatory: true, delay: 10, gens: [],
+    title: 'هل تمتلك بطاقة الأستاذ شادي الحايك؟',
+    thanksYes: 'شكرًا لك ✓', thanksNo: 'شكرًا لك ✓', thanksWant: 'تم تسجيل طلبك ✓ جاري تحويلك للواتساب...',
+    waNumber: ''
+  };
+  function cardCfg(){ return Object.assign({}, CARD_DEFAULTS, window.CardPopupConfig || {}); }
+  function cardYear(u){
+    const t = String((u && u.track) || '').slice(0, 4);
+    if (/^\d{4}$/.test(t)) return t;
+    return ({10: '2011', 11: '2010', 12: '2009'})[u && u.grade] || '';
+  }
+  function cardAudienceOk(cfg, u){
+    if (!cfg.gens || !cfg.gens.length) return true;
+    return !!u && cfg.gens.indexOf(cardYear(u)) > -1;
+  }
+  function accountUser(){
+    try { const A = window.StudentAccount; return (A && typeof A.getUser === 'function') ? A.getUser() : null; } catch(err){ return null; }
+  }
+  let CARD_QUESTION = CARD_DEFAULTS.title;
   const CARD_ANSWERS = {
     yes:  'نعم — يمتلك البطاقة',
     no:   'لا — لا يمتلك البطاقة ولا يريدها',
     want: 'لا يمتلك البطاقة — يريد الحصول عليها'
   };
-  const CARD_THANKS = {
-    yes:  'شكرًا لك ✓',
-    no:   'شكرًا لك ✓',
-    want: 'تم تسجيل طلبك ✓ جاري تحويلك للواتساب...'
-  };
-  const CARD_WA_NUMBER = '962788119796';
+  const CARD_WA_DEFAULT = '962788119796';
   let cardTimer = null;
 
   // للاختبار: افتح الصفحة برابط فيه ?testcard=1 وبيتمسح جواب البطاقة المحفوظ، فيرجع البوب أب يظهر
@@ -133,6 +148,9 @@
   }
   function cardKey(phone){ return 'ao_card_answer_' + phone; }
   function cardAnswered(u){
+    // إذا السيرفر عنده جواب الطالب (من أي جهاز) ما بنسأله ثاني
+    const au = accountUser();
+    if (au && /^(yes|want|no)$/.test(au.card || '')) return true;
     return !!(getRemembered(cardKey('anon')) || (u && u.phone && getRemembered(cardKey(u.phone))));
   }
 
@@ -143,8 +161,11 @@
   }
   function showCardPopup(){
     if (!siteContent.classList.contains('unlocked')) return;
-    const u = getSessionUser();
+    const cfg = cardCfg();
+    const u = getSessionUser() || accountUser();
+    if (!cfg.on || !cardAudienceOk(cfg, accountUser() || u)) return;
     if (cardAnswered(u)) return;
+    CARD_QUESTION = cfg.title;
     // نسجّل إن السؤال انعرض، عشان لو الطالب عمل Refresh يرجع يظهرله فورًا
     safeStorageSet('ao_card_shown', '1');
     setCookie('ao_card_shown', '1', 1/24);
@@ -152,7 +173,22 @@
     document.getElementById('cardPopWant').hidden = true;
     document.getElementById('cardPopThanks').hidden = true;
     document.getElementById('cardPop').hidden = false;
-    siteContent.inert = true;   // الجواب إجباري: ما بيقدر يتفاعل مع الموقع لحد ما يجاوب
+    // «الجواب إجباري» خيار من الداشبورد: لو الأستاذ طفّاه بيظهر زر إغلاق ✕ (وبيرجع يسأله بالزيارة الجاية)
+    const box = document.querySelector('#cardPop .card-pop-box');
+    let cx = document.getElementById('cardPopClose');
+    if (!cfg.mandatory){
+      if (!cx && box){
+        cx = document.createElement('button'); cx.type = 'button'; cx.id = 'cardPopClose'; cx.className = 'card-pop-x';
+        cx.setAttribute('aria-label', 'إغلاق'); cx.textContent = '✕';
+        cx.addEventListener('click', function(){ safeStorageRemove('ao_card_shown'); deleteCookie('ao_card_shown'); closeCardPopup(); });
+        box.appendChild(cx);
+      }
+      if (cx) cx.hidden = false;
+      siteContent.inert = true;
+    } else {
+      if (cx) cx.hidden = true;
+      siteContent.inert = true;   // الجواب إجباري: ما بيقدر يتفاعل مع الموقع لحد ما يجاوب
+    }
     document.body.style.overflow = 'hidden';
     const first = document.querySelector('#cardPop .card-opt');
     if (first) first.focus();
@@ -163,9 +199,14 @@
     clearTimeout(cardTimer);
     const u = getSessionUser();
     if (cardAnswered(u)) return;
+    if (!cardCfg().on) return;
     const alreadyShown = getRemembered('ao_card_shown') === '1';
-    cardTimer = setTimeout(showCardPopup, alreadyShown ? 0 : CARD_POPUP_DELAY_MS);
+    cardTimer = setTimeout(showCardPopup, alreadyShown ? 0 : Math.max(0, Number(cardCfg().delay) || 0) * 1000);
   }
+  // أول زيارة (ما في نسخة محفوظة): إعدادات الداشبورد بتوصل بعد ما انجدول السؤال بالتأخير الافتراضي، فبنعيد الجدولة بالتأخير الصحيح
+  window.cardPopupConfigChanged = function(){
+    if (siteContent.classList.contains('unlocked') && document.getElementById('cardPop').hidden) scheduleCardPopup();
+  };
 
   // الجواب النهائي: بنحفظه، بنسجله بالشيت، وبنعرض رسالة الشكر
   // إرسال جواب البطاقة للشيت (بصف الطالب نفسه، لازم يكون عنده رقم جوال)
@@ -197,12 +238,13 @@
     if (key === 'want'){
       const track = (u && u.track) ? u.track : '';
       const text = 'أريد الحصول على بطاقة الأستاذ' + (track ? ' — الجيل: ' + track : '');
-      waUrl = 'https://wa.me/' + CARD_WA_NUMBER + '?text=' + encodeURIComponent(text);
+      waUrl = 'https://wa.me/' + (String(cardCfg().waNumber || '').replace(/\D/g, '') || CARD_WA_DEFAULT) + '?text=' + encodeURIComponent(text);
     }
     document.getElementById('cardPopMain').hidden = true;
     document.getElementById('cardPopWant').hidden = true;
     const thanks = document.getElementById('cardPopThanks');
-    thanks.textContent = CARD_THANKS[key];
+    const cfgT = cardCfg();
+    thanks.textContent = key === 'yes' ? cfgT.thanksYes : key === 'no' ? cfgT.thanksNo : cfgT.thanksWant;
     thanks.hidden = false;
     if (waUrl){
       // بنفتح الواتساب مباشرة (من ضغطة الطالب نفسها عشان ما يتحجب)

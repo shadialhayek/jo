@@ -15,26 +15,230 @@
     return /^https?:\/\//i.test(u) ? u : '';
   }
 
-  // ---------- إعلان أعلى الموقع ----------
-  function applyBanner(b){
-    var old = document.getElementById('cmsBanner'); if (old) old.remove();
-    if (!b || !b.on || !b.text) return;
-    var key = 'cms_banner_closed';
-    try { if (localStorage.getItem(key) === b.text) return; } catch(e){}
-    var bar = el('div'); bar.id = 'cmsBanner';
-    bar.style.cssText = 'background:#0b3d91;color:#fff;padding:10px 44px 10px 16px;text-align:center;font-size:.95rem;line-height:1.6;position:relative;z-index:9999;font-weight:600';
-    bar.appendChild(el('span', '', b.text));
-    var link = safeUrl(b.link);
-    if (link){
-      var a = el('a', '', b.linkText || 'التفاصيل'); a.href = link; a.target = '_blank'; a.rel = 'noopener';
-      a.style.cssText = 'color:#fff;background:rgba(255,255,255,.2);border-radius:8px;padding:2px 12px;margin-inline-start:10px;text-decoration:none;white-space:nowrap';
-      bar.appendChild(a);
+  // ---------- الإعلانات (نص / صورة / فيديو، شريط أو نافذة منبثقة، قابل للضغط أو لا، لفئة محددة) ----------
+  var adsData = null, adsLegacy = null, popTimer = null, popOpen = false;
+  var AD_CSS = '' +
+    '#cmsAds{position:relative;z-index:9999}' +
+    '.cmsad-bar{position:relative;background:#16213E;color:#F3EFE3;border-bottom:2px solid #FDBA21;text-align:center;font-size:.95rem;line-height:1.7;font-weight:600}' +
+    '.cmsad-bar .cmsad-in{padding:10px 46px 10px 16px;display:flex;flex-direction:column;align-items:center;gap:8px}' +
+    '.cmsad-bar .cmsad-txt{white-space:pre-line}' +
+    '.cmsad-bar img{max-width:100%;max-height:150px;border-radius:8px;display:block}' +
+    '.cmsad-pill{display:inline-block;background:#FDBA21;color:#0B1220;border-radius:8px;padding:3px 14px;font-weight:800;text-decoration:none;white-space:nowrap}' +
+    '.cmsad-x{position:absolute;inset-inline-end:10px;top:10px;width:32px;height:32px;border-radius:50%;border:0;background:rgba(0,0,0,.45);color:#fff;font-size:1rem;cursor:pointer;line-height:1;z-index:2}' +
+    '.cmsad-bar a.cmsad-wrap,.cmsad-box a.cmsad-wrap{display:contents;color:inherit;text-decoration:none}' +
+    '.cmsad-pop{position:fixed;inset:0;z-index:950;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(0,0,0,.72);backdrop-filter:blur(3px)}' +
+    '.cmsad-box{position:relative;background:#0F1B33;color:#F3EFE3;border-top:5px solid #FDBA21;border-radius:10px;width:100%;max-width:520px;max-height:92vh;overflow:auto;box-shadow:0 30px 60px -20px rgba(0,0,0,.6);text-align:center;animation:cmsadIn .3s ease}' +
+    '.cmsad-box.img-only{background:transparent;border:0;box-shadow:none;max-width:560px}' +
+    '@keyframes cmsadIn{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}' +
+    '.cmsad-box img{width:100%;display:block;border-radius:8px}' +
+    '.cmsad-body{padding:22px 22px 24px;display:flex;flex-direction:column;gap:14px;align-items:center}' +
+    '.cmsad-body.has-media{padding-top:16px}' +
+    '.cmsad-box .cmsad-txt{font-size:1.08rem;font-weight:700;line-height:1.8;white-space:pre-line}' +
+    '.cmsad-media{width:100%;aspect-ratio:16/9;border:0;border-radius:8px;background:#000;display:block}' +
+    'video.cmsad-media{aspect-ratio:auto;max-height:70vh}';
+  function adSig(a){ return [a.type, a.style, a.text, a.img, a.video, a.link, a.clickable ? 1 : 0, a.linkText].join('|'); }
+  function adMemKey(a){ return 'cms_ad_' + a.id; }
+  function adSeen(a, bar){
+    var mode = bar ? 'once' : (a.repeat || 'once');
+    try {
+      if (mode === 'always') return sessionStorage.getItem(adMemKey(a)) === adSig(a);
+      var raw = localStorage.getItem(adMemKey(a)); if (!raw) return false;
+      var o = JSON.parse(raw); if (!o || o.sig !== adSig(a)) return false;
+      if (mode === 'daily') return Date.now() - (o.t || 0) < 86400000;
+      return true;
+    } catch(e){ return false; }
+  }
+  function adMark(a, bar){
+    var mode = bar ? 'once' : (a.repeat || 'once');
+    try {
+      if (mode === 'always') sessionStorage.setItem(adMemKey(a), adSig(a));
+      else localStorage.setItem(adMemKey(a), JSON.stringify({ sig: adSig(a), t: Date.now() }));
+    } catch(e){}
+  }
+  function curUser(){
+    try { var A = window.StudentAccount; return (A && typeof A.getUser === 'function') ? A.getUser() : null; } catch(e){ return null; }
+  }
+  var GRADE_YEAR = { 10: '2011', 11: '2010', 12: '2009' };
+  function userYear(u){
+    var t = String((u && u.track) || '').slice(0, 4);
+    return /^\d{4}$/.test(t) ? t : (GRADE_YEAR[u && u.grade] || '');
+  }
+  function audienceOk(au, u){
+    au = au || {};
+    if (au.login === 'in' && !u) return false;
+    if (au.login === 'out' && u) return false;
+    if (au.gens && au.gens.length && (!u || au.gens.indexOf(userYear(u)) < 0)) return false;
+    if (au.card && au.card.length){
+      var st = (u && u.card) || 'none'; if (!u) return false;
+      if (au.card.indexOf(st) < 0) return false;
     }
-    var x = el('button', '', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'إغلاق');
-    x.style.cssText = 'position:absolute;inset-inline-end:10px;top:50%;transform:translateY(-50%);background:none;border:0;color:#fff;font-size:1rem;cursor:pointer;padding:6px';
-    x.onclick = function(){ bar.remove(); try { localStorage.setItem(key, b.text); } catch(e){} };
-    bar.appendChild(x);
-    document.body.insertBefore(bar, document.body.firstChild);
+    if (au.phones && au.phones.length){
+      var ph = String((u && u.phone) || '').replace(/\D/g, '').slice(-9);
+      if (!ph || !au.phones.some(function(p){ return String(p).slice(-9) === ph; })) return false;
+    }
+    return true;
+  }
+  function adLive(a, now){
+    if (!a || a.on === false) return false;
+    if (a.start && now < a.start) return false;
+    if (a.end && now > a.end) return false;
+    return true;
+  }
+  function videoNode(url){
+    var u = String(url || ''), m;
+    var frame = function(src){
+      var f = el('iframe', 'cmsad-media'); f.src = src; f.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen'; f.allowFullscreen = true; f.loading = 'lazy'; f.referrerPolicy = 'strict-origin-when-cross-origin'; f.title = 'فيديو'; return f;
+    };
+    if ((m = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/.exec(u))) return frame('https://www.youtube-nocookie.com/embed/' + m[1] + '?rel=0');
+    if ((m = /vimeo\.com\/(?:video\/)?(\d+)/.exec(u))) return frame('https://player.vimeo.com/video/' + m[1]);
+    if (/^https?:\/\/(www\.|m\.|web\.)?(facebook\.com|fb\.watch)\//i.test(u)) return frame('https://www.facebook.com/plugins/video.php?show_text=false&href=' + encodeURIComponent(u));
+    var direct = safeUrl(u);
+    if (direct && (/\/files\/[A-Za-z0-9._-]+\.(mp4|webm)$/i.test(direct) || /\.(mp4|webm|ogg)(\?.*)?$/i.test(direct))){
+      var v = el('video', 'cmsad-media'); v.controls = true; v.playsInline = true; v.setAttribute('playsinline', ''); v.preload = 'metadata'; v.src = direct; return v;
+    }
+    return null;
+  }
+  function adContent(a, box, isBar){
+    var link = a.clickable ? safeUrl(a.link) : '';
+    var media = null;
+    if (a.type === 'image' && a.img){
+      var src = /^assets\//.test(a.img) ? a.img : safeUrl(a.img);
+      if (src){ media = el('img'); media.src = src; media.alt = a.text || a.name || 'إعلان'; media.loading = 'lazy'; }
+    } else if (a.type === 'video' && a.video){
+      media = videoNode(a.video);
+    }
+    var holder = box;
+    // الصورة/النص قابلة للضغط كاملة. الفيديو ما بينلفّ برابط (عشان ما يتعطل التشغيل)، فالرابط بيطلع كزر تحته.
+    var wrapAll = link && a.type !== 'video';
+    if (wrapAll){
+      holder = el('a', 'cmsad-wrap'); holder.href = link; holder.target = '_blank'; holder.rel = 'noopener noreferrer'; box.appendChild(holder);
+    }
+    if (isBar){
+      if (a.text){ holder.appendChild(el('div', 'cmsad-txt', a.text)); }
+      if (media) holder.appendChild(media);
+    } else {
+      if (media) holder.appendChild(media);
+      if (a.text){
+        var body = el('div', 'cmsad-body' + (media ? ' has-media' : ''));
+        body.appendChild(el('div', 'cmsad-txt', a.text));
+        holder.appendChild(body);
+      }
+    }
+    if (link){
+      var needBtn = a.type === 'video' || !!a.linkText;
+      if (needBtn){
+        var btn = el(wrapAll ? 'span' : 'a', 'cmsad-pill', a.linkText || 'التفاصيل');
+        if (!wrapAll){ btn.href = link; btn.target = '_blank'; btn.rel = 'noopener noreferrer'; }
+        if (isBar) holder.appendChild(btn);
+        else { var d = holder.querySelector('.cmsad-body'); if (!d){ d = el('div', 'cmsad-body'); holder.appendChild(d); } d.appendChild(btn); }
+      }
+    }
+    return media;
+  }
+  function closeAdPopup(){
+    var p = document.getElementById('cmsAdPop'); if (p) p.remove();
+    popOpen = false;
+  }
+  function openAdPopup(a){
+    closeAdPopup();
+    popOpen = true;
+    var wrap = el('div', 'cmsad-pop'); wrap.id = 'cmsAdPop'; wrap.setAttribute('role', 'dialog'); wrap.setAttribute('aria-modal', 'true');
+    var box = el('div', 'cmsad-box' + (a.type === 'image' && !a.text ? ' img-only' : ''));
+    var dismiss = function(){ adMark(a, false); closeAdPopup(); };
+    adContent(a, box, false);
+    if (a.dismissible !== false){
+      var x = el('button', 'cmsad-x', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'إغلاق'); x.onclick = function(e){ e.stopPropagation(); dismiss(); };
+      box.appendChild(x);
+      wrap.addEventListener('click', function(e){ if (e.target === wrap) dismiss(); });
+    } else {
+      // إعلان إجباري: بيضل لحد ما ينتهي وقته. بنسجّل الظهور بس عشان ما يتكرر بنفس الجلسة لو الأستاذ اختار «مرة وحدة».
+      adMark(a, false);
+    }
+    wrap.appendChild(box);
+    document.body.appendChild(wrap);
+  }
+  // بنفحص كل ثانية ونص: الموقع مفتوح (بعد الدخول)، سؤال البطاقة مش ظاهر، وما في نافذة إعلان ثانية
+  function popupTick(){
+    if (popOpen || !adsData) return;
+    var sc = document.getElementById('siteContent');
+    if (sc && !sc.classList.contains('unlocked')) return;
+    var cp = document.getElementById('cardPop'); if (cp && !cp.hidden) return;
+    var now = Date.now(), u = curUser();
+    var next = null;
+    for (var i = 0; i < adsData.length; i++){
+      var a = adsData[i];
+      if (a.style !== 'popup' && a.type !== 'video') continue;
+      if (!adLive(a, now) || !audienceOk(a.audience, u) || adSeen(a, false)) continue;
+      var due = a._t0 + (a.delay || 0) * 1000;
+      if (now < due) continue;
+      next = a; break;
+    }
+    if (next) openAdPopup(next);
+  }
+  function applyAds(c){
+    if (!document.getElementById('cmsAdsCss')){
+      var st = document.createElement('style'); st.id = 'cmsAdsCss'; st.textContent = AD_CSS; document.head.appendChild(st);
+    }
+    var old = document.getElementById('cmsAds'); if (old) old.remove();
+    var items = (c && c.ads && Array.isArray(c.ads.items)) ? c.ads.items.slice() : [];
+    // الإعلان القديم (شريط النص): بيظل شغّال لحد ما تحفظ إعلانات من الداشبورد
+    var b = c && c.banner;
+    if (!items.length && b && b.on && b.text){
+      items.push({ id: 'legacy', type: 'text', style: 'bar', text: b.text, link: b.link || '', clickable: !!b.link, linkText: b.linkText || (b.link ? 'التفاصيل' : ''), on: true, dismissible: true, audience: {} });
+    }
+    var now = Date.now(), u = curUser();
+    var prev = {}; (adsData || []).forEach(function(x){ prev[x.id + adSig(x)] = x._t0; });
+    adsData = items.map(function(a){ a._t0 = prev[a.id + adSig(a)] || now; return a; });
+    // الأشرطة
+    var holder = el('div'); holder.id = 'cmsAds';
+    adsData.forEach(function(a){
+      if (a.style === 'popup' || a.type === 'video') return;
+      if (!adLive(a, now) || !audienceOk(a.audience, u) || adSeen(a, true)) return;
+      var bar = el('div', 'cmsad-bar'); bar.setAttribute('data-ad', a.id);
+      var inn = el('div', 'cmsad-in'); bar.appendChild(inn);
+      adContent(a, inn, true);
+      if (a.dismissible !== false){
+        var x = el('button', 'cmsad-x', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'إغلاق');
+        x.style.top = '50%'; x.style.transform = 'translateY(-50%)'; x.style.width = '28px'; x.style.height = '28px';
+        x.onclick = function(){ bar.remove(); adMark(a, true); };
+        bar.appendChild(x);
+      }
+      holder.appendChild(bar);
+    });
+    if (holder.childNodes.length) document.body.insertBefore(holder, document.body.firstChild);
+    // النوافذ المنبثقة
+    var cur = document.getElementById('cmsAdPop');
+    if (cur){ var stillThere = adsData.some(function(a){ return (a.style === 'popup' || a.type === 'video') && adLive(a, now) && audienceOk(a.audience, u); }); if (!stillThere) closeAdPopup(); }
+    clearInterval(popTimer);
+    if (adsData.some(function(a){ return a.style === 'popup' || a.type === 'video'; })){ popTimer = setInterval(popupTick, 1500); setTimeout(popupTick, 400); }
+  }
+  ['student:login', 'student:logout', 'student:restore', 'student:update'].forEach(function(ev){
+    window.addEventListener(ev, function(){ setTimeout(function(){ if (lastCms) applyAds(lastCms); }, 50); });
+  });
+
+  // ---------- سؤال بطاقة الأستاذ: الإعدادات من الداشبورد (core.js بيقراها وقت العرض) ----------
+  function applyCardPopup(cfg){
+    if (!cfg || typeof cfg !== 'object') return;
+    window.CardPopupConfig = cfg;
+    var set = function(sel, txt){ var n = document.querySelector(sel); if (n && txt != null) n.textContent = txt; };
+    set('#cardPopTitle', cfg.title);
+    set('#cardPopMain .sub', cfg.sub);
+    set('#cardPopMain [data-answer="yes"]', cfg.yes);
+    set('#cardPopMain [data-answer="no"]', cfg.no);
+    set('#cardPopWant h3', cfg.wantTitle);
+    set('#cardPopWant .sub', cfg.wantSub);
+    set('#cardPopWant [data-answer="want-yes"]', cfg.wantYes);
+    set('#cardPopWant [data-answer="want-no"]', cfg.wantNo);
+    var ic = document.querySelector('#cardPopMain .card-pop-ic');
+    if (ic){
+      var im = ic.querySelector('img');
+      var src = cfg.img ? (/^assets\//.test(cfg.img) ? cfg.img : safeUrl(cfg.img)) : '';
+      if (src){
+        if (!im){ im = document.createElement('img'); im.alt = ''; im.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%'; ic.textContent = ''; ic.appendChild(im); }
+        im.src = src;
+      }
+    }
+    if (typeof window.cardPopupConfigChanged === 'function') window.cardPopupConfigChanged();
   }
 
   // ---------- رقم الواتساب ----------
@@ -468,7 +672,8 @@
   function apply(c){
     if (!c) return;
     lastCms = c;
-    try { applyBanner(c.banner); } catch(e){ console.warn('cms banner', e); }
+    try { applyAds(c); } catch(e){ console.warn('cms ads', e); }
+    try { applyCardPopup(c.cardpopup); } catch(e){ console.warn('cms cardpopup', e); }
     try { applyTiles(c.tiles); } catch(e){ console.warn('cms tiles', e); }
     try { applySocial(c.social); } catch(e){ console.warn('cms social', e); }
     try { applyWhatsapp(c.settings); } catch(e){ console.warn('cms wa', e); }
