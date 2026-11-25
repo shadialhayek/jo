@@ -668,18 +668,25 @@
   }
 
   // ---------- ترتيب البطاقات من الداشبورد ----------
+  // مفتاح مرن: بيتجاهل المسافات والشرطات والتشكيل والأحرف المخفية، فاختلاف بسيط بالكتابة ما بيخرّب الترتيب
+  function looseKey(t){
+    return String(t || '').replace(/^t:/, '').replace(/[\u064B-\u065F\u0670\u0640\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '')
+      .replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+      .replace(/[^0-9A-Za-z\u0621-\u064A]+/g, '').toLowerCase();
+  }
   function cardKey(c){
-    var h3 = c.querySelector('h3'); return h3 ? 't:' + h3.textContent.replace(/[<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200) : '';
+    var h3 = c.querySelector('h3'); return h3 ? looseKey(h3.textContent) : '';
   }
   function applyOrder(o){
     var lists = (o && o.lists) || {};
     Object.keys(lists).forEach(function(k){
       var m = /^(lessons|exams|eschool|question-bank):(\d{4})$/.exec(k); if (!m) return;
       var list = document.querySelector('#view-' + m[1] + ' .gen-panel[data-gen="' + m[2] + '"] .item-card-list'); if (!list) return;
-      var pos = {}; lists[k].forEach(function(x, i){ pos[x] = i; });
+      var pos = {}; lists[k].forEach(function(x, i){ var kk = looseKey(x); if (kk && !(kk in pos)) pos[kk] = i; });
       var cards = Array.prototype.slice.call(list.children).filter(function(n){ return n.classList && n.classList.contains('item-card'); });
       var fresh = [], known = [];
-      cards.forEach(function(c){ var key = cardKey(c); (key in pos ? known : fresh).push(c); });
+      cards.forEach(function(c){ var key = cardKey(c); (key && key in pos ? known : fresh).push(c); });
+      if (fresh.length && known.length){ try { console.info('[ترتيب] بطاقات غير موجودة بالترتيب المحفوظ (' + k + '):', fresh.map(function(c){ return c.querySelector('h3').textContent.trim(); })); } catch(e){} }
       known.sort(function(a, b){ return pos[cardKey(a)] - pos[cardKey(b)]; });
       var first = cards.length ? cards[0] : null; if (!first) return;
       var anchor = document.createComment(''); list.insertBefore(anchor, first);
