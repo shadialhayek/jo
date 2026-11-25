@@ -669,8 +669,6 @@
 
   // ---------- ترتيب البطاقات من الداشبورد ----------
   function cardKey(c){
-    var id = c.getAttribute('data-exam'); if (id) return 'e:' + id;
-    id = c.getAttribute('data-cms'); if (id) return 'c:' + id;
     var h3 = c.querySelector('h3'); return h3 ? 't:' + h3.textContent.replace(/[<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200) : '';
   }
   function applyOrder(o){
