@@ -667,6 +667,29 @@
     }).catch(function(){});
   }
 
+  // ---------- ترتيب البطاقات من الداشبورد ----------
+  function cardKey(c){
+    var id = c.getAttribute('data-exam'); if (id) return 'e:' + id;
+    id = c.getAttribute('data-cms'); if (id) return 'c:' + id;
+    var h3 = c.querySelector('h3'); return h3 ? 't:' + h3.textContent.replace(/[<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200) : '';
+  }
+  function applyOrder(o){
+    var lists = (o && o.lists) || {};
+    Object.keys(lists).forEach(function(k){
+      var m = /^(lessons|exams|eschool|question-bank):(\d{4})$/.exec(k); if (!m) return;
+      var list = document.querySelector('#view-' + m[1] + ' .gen-panel[data-gen="' + m[2] + '"] .item-card-list'); if (!list) return;
+      var pos = {}; lists[k].forEach(function(x, i){ pos[x] = i; });
+      var cards = Array.prototype.slice.call(list.children).filter(function(n){ return n.classList && n.classList.contains('item-card'); });
+      var fresh = [], known = [];
+      cards.forEach(function(c){ var key = cardKey(c); (key in pos ? known : fresh).push(c); });
+      known.sort(function(a, b){ return pos[cardKey(a)] - pos[cardKey(b)]; });
+      var first = cards.length ? cards[0] : null; if (!first) return;
+      var anchor = document.createComment(''); list.insertBefore(anchor, first);
+      fresh.concat(known).forEach(function(c){ list.insertBefore(c, anchor); });
+      anchor.remove();
+    });
+  }
+
   var lastCms = null;
 
   function apply(c){
@@ -684,6 +707,7 @@
     try { applyGallery(c.gallery); } catch(e){ console.warn('cms gallery', e); }
     try { applyTestimonials(c.testimonials); } catch(e){ console.warn('cms testimonials', e); }
     try { applyCustomExams(c.examlist); } catch(e){ console.warn('cms custom exams', e); }
+    try { applyOrder(c.order); } catch(e){ console.warn('cms order', e); }
   }
 
   try { var cached = JSON.parse(localStorage.getItem(CACHE) || 'null'); if (cached) apply(cached); } catch(e){}
